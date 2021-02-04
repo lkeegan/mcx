@@ -965,7 +965,8 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
 		case(MCX_SRC_PATTERN):
 		case(MCX_SRC_PATTERN3D):
 		case(MCX_SRC_FOURIER):
-		case(MCX_SRC_PENCILARRAY): { /*a rectangular grid over a plane*/
+		case(MCX_SRC_PENCILARRAY):
+        { /*a rectangular grid over a plane*/
 		      float rx=rand_uniform01(t);
 		      float ry=rand_uniform01(t);
 		      float rz;
@@ -1120,7 +1121,7 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
 		      ang=sqrtf(-2.f*logf(rand_uniform01(t)))*(1.f-2.f*rand_uniform01(t))*gcfg->srcparam1.x;
 		      sincosf(ang,&stheta,&ctheta);
 		      rotatevector(v,stheta,ctheta,sphi,cphi);
-                      canfocus=0;
+              canfocus=0;
 		      break;
 		}
 		case(MCX_SRC_LINE):
@@ -1143,6 +1144,10 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
                       canfocus=(gcfg->srctype==MCX_SRC_SLIT);
 		      break;
 		}
+        case (MCX_SRC_IPASC):
+        {
+            break;
+        }
 	    }
 
 	    if(p->w<=gcfg->minenergy)
