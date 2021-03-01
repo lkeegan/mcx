@@ -25,6 +25,7 @@
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include "stdio.h"
 
 #include "br2cu.h"
 #include "mcx_core.h"
@@ -1144,6 +1145,103 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
                       canfocus=(gcfg->srctype==MCX_SRC_SLIT);
 		      break;
 		}
+        case (MCX_SRC_INVISION):
+             // @param[in,out] p: the 3D position and weight of the photon
+             // @param[in,out] v: the direction vector of the photon
+             // @param[in,out] f: the parameter vector of the photon
+             // @param[in,out] rv: the reciprocal direction vector of the photon (rv[i]=1/v[i])
+        {
+            float sin_ang, cos_ang, ang;
+            int output_fibre_randomisation = (int) (rand_uniform01(t) * 2); // 10 possible locations enumerated 0 through 9
+            float slit_position_randomisation = rand_uniform01(t);
+            float opening_angle_randomisation = rand_uniform01(t);
+
+            float spacing = gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1
+            float det_sep_half = 24.74f / (2 * spacing);
+            float detector_iso_distance = 74.05f / (2 * spacing);
+            float illumination_angle = -0.41608649f;
+
+            if (output_fibre_randomisation == 0)
+            {
+                ang = 0.f;
+                det_sep_half = det_sep_half;
+                illumination_angle = illumination_angle;
+            }
+            else if (output_fibre_randomisation == 1)
+            {
+                ang = 0.f;
+                det_sep_half = -det_sep_half;
+                illumination_angle = -illumination_angle;
+            }
+            else if (output_fibre_randomisation == 2)
+            {
+                ang = 1.25664;
+                det_sep_half = det_sep_half;
+                illumination_angle = illumination_angle;
+            }
+            else if (output_fibre_randomisation == 3)
+            {
+                ang = 1.25664;
+                det_sep_half = -det_sep_half;
+                illumination_angle = -illumination_angle;
+            }
+            else if (output_fibre_randomisation == 4)
+            {
+                ang = -1.25664;
+                det_sep_half = det_sep_half;
+                illumination_angle = illumination_angle;
+            }
+            else if (output_fibre_randomisation == 5)
+            {
+                ang = -1.25664;
+                det_sep_half = -det_sep_half;
+                illumination_angle = -illumination_angle;
+            }
+            else if (output_fibre_randomisation == 6)
+            {
+                ang = 2.51327;
+                det_sep_half = det_sep_half;
+                illumination_angle = illumination_angle;
+            }
+            else if (output_fibre_randomisation == 7)
+            {
+                ang = 2.51327;
+                det_sep_half = -det_sep_half;
+                illumination_angle = -illumination_angle;
+            }
+            else if (output_fibre_randomisation == 8)
+            {
+                ang = -2.51327;
+                det_sep_half = det_sep_half;
+                illumination_angle = illumination_angle;
+            }
+            else if (output_fibre_randomisation == 9)
+            {
+                ang = -2.51327;
+                det_sep_half = -det_sep_half;
+                illumination_angle = -illumination_angle;
+            }
+
+            sincosf(ang, &sin_ang, &cos_ang);
+            *((float4*)p)=float4(
+			        sin_ang * detector_iso_distance + p->x,
+			        p->y + det_sep_half,
+			        cos_ang * detector_iso_distance + p->z,
+			        p->w
+			    );
+            *((float4*)v)=float4(
+			         -sin_ang,
+			         sinf(illumination_angle),
+			         -cos_ang,
+			         v->nscat
+			    );
+
+            // ang = 0.331613*(1.f-2.f*rand_uniform01(t)); //next arimuth angle
+		    // sincosf(ang, &sin_ang, &cos_ang);
+		    // rotatevector(v, sin_ang, cos_ang, sin_ang, cos_ang);
+
+            break;
+        }
         case (MCX_SRC_IPASC):
         {
             break;
