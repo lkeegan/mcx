@@ -1152,72 +1152,74 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
              // @param[in,out] rv: the reciprocal direction vector of the photon (rv[i]=1/v[i])
         {
             float sin_ang, cos_ang, ang;
-            int output_fibre_randomisation = (int) (rand_uniform01(t) * 2); // 10 possible locations enumerated 0 through 9
+            int output_fibre_randomisation = (int) (rand_uniform01(t) * 10); // 10 possible locations enumerated 0 through 9
             float slit_position_randomisation = rand_uniform01(t);
             float opening_angle_randomisation = rand_uniform01(t);
 
-            float spacing = gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1
+            float spacing = (float) gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1
             float det_sep_half = 24.74f / (2 * spacing);
             float detector_iso_distance = 74.05f / (2 * spacing);
             float illumination_angle = -0.41608649f;
+            float angle_randomisation = 1.f-2.f*rand_uniform01(t);
+            illumination_angle = illumination_angle + (angle_randomisation * 0.165806f);
 
             if (output_fibre_randomisation == 0)
             {
-                ang = 0.f;
+                ang = 0.0f;
                 det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
             else if (output_fibre_randomisation == 1)
             {
-                ang = 0.f;
+                ang = 0.0f;
                 det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
             else if (output_fibre_randomisation == 2)
             {
-                ang = 1.25664;
+                ang = 1.25664f;
                 det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
             else if (output_fibre_randomisation == 3)
             {
-                ang = 1.25664;
+                ang = 1.25664f;
                 det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
             else if (output_fibre_randomisation == 4)
             {
-                ang = -1.25664;
+                ang = -1.25664f;
                 det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
             else if (output_fibre_randomisation == 5)
             {
-                ang = -1.25664;
+                ang = -1.25664f;
                 det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
             else if (output_fibre_randomisation == 6)
             {
-                ang = 2.51327;
+                ang = 2.51327f;
                 det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
             else if (output_fibre_randomisation == 7)
             {
-                ang = 2.51327;
+                ang = 2.51327f;
                 det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
             else if (output_fibre_randomisation == 8)
             {
-                ang = -2.51327;
+                ang = -2.51327f;
                 det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
             else if (output_fibre_randomisation == 9)
             {
-                ang = -2.51327;
+                ang = -2.51327f;
                 det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
@@ -1229,16 +1231,27 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
 			        cos_ang * detector_iso_distance + p->z,
 			        p->w
 			    );
+
+            float length = rsqrtf(sin_ang * sin_ang + sinf(illumination_angle) * sinf(illumination_angle) + cos_ang * cos_ang);
             *((float4*)v)=float4(
-			         -sin_ang,
-			         sinf(illumination_angle),
-			         -cos_ang,
+			         -sin_ang * length,
+			         sinf(illumination_angle) * length,
+			         -cos_ang * length,
 			         v->nscat
 			    );
 
-            // ang = 0.331613*(1.f-2.f*rand_uniform01(t)); //next arimuth angle
-		    // sincosf(ang, &sin_ang, &cos_ang);
-		    // rotatevector(v, sin_ang, cos_ang, sin_ang, cos_ang);
+            length = rsqrtf(v->z*v->z + v->x*v->x);
+            float target_length = 6.12f / spacing;
+            float3 unit_vector = float3(v->z * length * target_length, 0, -v->x * length * target_length);
+
+            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
+
+            *((float4*)p)=float4(
+			        p->x + slit_randomisation * unit_vector.x,
+			        p->y,
+			        p->z + slit_randomisation * unit_vector.z,
+			        p->w
+			    );
 
             break;
         }
