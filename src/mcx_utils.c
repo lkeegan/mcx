@@ -182,7 +182,7 @@ const char boundarydetflag[]={'0','1','\0'};
 
 const char *srctypeid[]={"pencil","isotropic","cone","gaussian","planar",
     "pattern","fourier","arcsine","disk","fourierx","fourierx2d","zgaussian",
-    "line","slit","pencilarray","pattern3d", "invision", "ipasc", ""};
+    "line","slit","pencilarray","pattern3d", "invision", "error_1", "error_2", "error_3", ""};
 
 
 /**

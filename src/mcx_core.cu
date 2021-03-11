@@ -301,7 +301,6 @@ __device__ inline float mcx_nextafterf(float a, int dir){
 
 __device__ inline float hitgrid(float3 *p0, float3 *v, float *htime,float* rv,int *id){
       float dist;
-
       ///< time-of-flight to hit the wall in each direction
       htime[0]=fabs((floorf(p0->x)+(v->x>0.f)-p0->x)*rv[0]); ///< time-of-flight in x
       htime[1]=fabs((floorf(p0->y)+(v->y>0.f)-p0->y)*rv[1]);
@@ -365,7 +364,6 @@ __device__ inline half mcx_nextafter_half(const half a, const short dir){
 
 __device__ inline float hitgrid(float3 *p0, float3 *v, float *htime,float* rv,int *id){
       float dist;
-
       union {
            unsigned int i;
            float f;
@@ -1227,8 +1225,8 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
             sincosf(ang, &sin_ang, &cos_ang);
             *((float4*)p)=float4(
 			        sin_ang * detector_iso_distance + p->x,
-			        p->y + det_sep_half,
-			        cos_ang * detector_iso_distance + p->z,
+			        det_sep_half  + p->y,
+			        cos_ang * detector_iso_distance  + p->z,
 			        p->w
 			    );
 
@@ -1255,8 +1253,86 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
 
             break;
         }
-        case (MCX_SRC_IPASC):
+        case (MCX_SRC_ERROR_CHECKERBOARD):
         {
+            *((float4*)p)=float4(
+			        170.0,
+			        p->y,
+			        170.0,
+			        p->w
+			    );
+
+            *((float4*)v)=float4(
+			         -0.7071,
+			         0,
+			         -0.7071,
+			         v->nscat
+			    );
+
+            float target_length = 30.0f;
+            float3 unit_vector = float3(v->z * target_length, 0, -v->x * target_length);
+
+            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
+
+            *((float4*)p)=float4(
+			        p->x + slit_randomisation * unit_vector.x,
+			        p->y,
+			        p->z + slit_randomisation * unit_vector.z,
+			        p->w
+			    );
+
+            break;
+        }
+        case (MCX_SRC_ERROR_STRIPES):
+        {
+            float ang = 1.25664f;
+            float detector_iso_distance = 74.05f;
+            float sin_ang, cos_ang;
+            sincosf(ang, &sin_ang, &cos_ang);
+
+            *((float4*)p)=float4(
+			        sin_ang * detector_iso_distance + p->x,
+			        p->y,
+			        cos_ang * detector_iso_distance  + p->z,
+			        p->w
+			    );
+
+            *((float4*)v)=float4(
+			         -sin_ang,
+			         0,
+			         -cos_ang,
+			         v->nscat
+			    );
+            float length = rsqrtf(v->z*v->z + v->x*v->x);
+            float target_length = 10.0f;
+            float3 unit_vector = float3(v->z * length * target_length, 0, -v->x * length * target_length);
+            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
+            *((float4*)p)=float4(
+			        p->x + slit_randomisation * unit_vector.x,
+			        p->y,
+			        p->z + slit_randomisation * unit_vector.z,
+			        p->w
+			    );   
+            break;
+        }
+        case(MCX_SRC_ERROR_DIFFERENT):
+        {
+            *((float4*)p)=float4(30.0, 40.0, 65.0, p->w);
+            *((float4*)v)=float4(0.894427, 0, 0.447213, v->nscat);
+
+
+            float target_length = 30.0f;
+            float3 unit_vector = float3(v->z * target_length, 0, -v->x * target_length);
+
+            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
+
+            *((float4*)p)=float4(
+			        p->x + slit_randomisation * unit_vector.x,
+			        p->y,
+			        p->z + slit_randomisation * unit_vector.z,
+			        p->w
+			    );
+
             break;
         }
 	    }
