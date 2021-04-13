@@ -1143,6 +1143,34 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
                       canfocus=(gcfg->srctype==MCX_SRC_SLIT);
 		      break;
 		}
+		case(MCX_SRC_MSOT_ACUITY_ECHO):
+		{
+			float r=rand_uniform01(t);
+			float s=rand_uniform01(t);
+			float h=rand_uniform01(t);
+			*((float4*)p)=float4(p->x+(1.f-2.f*r)*gcfg->srcparam1.x/2.f,          //gcfg->srcparam1.x is the x-length of the slit
+							   p->y+s*gcfg->srcparam1.y,
+							   p->z+h*gcfg->srcparam1.z,
+							   p->w);
+			float angle=8.66f;        //full beam divergence angle measured at Full Width at Half Maximum (FWHM)
+			float FWHM=2.f*tanf(0.5f*angle*TWO_PI/360.f);       //FWHM of beam divergence
+			float sigma=FWHM/(2.f*sqrtf(2.f*logf(2.f)));        //standard deviation of gaussian with FWHM
+			float u1=rand_uniform01(t);
+			float u2=rand_uniform01(t);
+			float z0=sigma*sqrtf(-2.f*logf(u1))*cosf(TWO_PI*u2);      //random variable 0 from gaussian with standard deviation sigma
+			float z1=sigma*sqrtf(-2.f*logf(u1))*sinf(TWO_PI*u2);      //random variable 0 from gaussian with standard deviation sigma
+			float incident_angle=atanf(v->y/v->z);        //incident angle given by src_dir in .json file
+			float y_width=cosf(incident_angle)*z0;        //y-distance that needs to be added to the old dir-vector
+			float z_width=sinf(incident_angle)*z0;        //z-distance that needs to be added to the old dir-vector
+			*((float3*)v)=float3(v->x+z1, v->y+y_width, v->z+z_width);
+			float norm=rsqrtf(v->x*v->x+v->y*v->y+v->z*v->z);
+			*((float3*)v)=float3(v->x*norm, v->y*(norm), v->z*norm);
+
+			/**rv=float3(rv->x+(gcfg->srcparam1.x)*0.5f,
+					 rv->y+(gcfg->srcparam1.y)*0.5f,
+					 rv->z+(gcfg->srcparam1.z)*0.5f);*/
+			break;
+		}
         case (MCX_SRC_INVISION):
              // @param[in,out] p: the 3D position and weight of the photon
              // @param[in,out] v: the direction vector of the photon
@@ -1241,88 +1269,6 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
             length = rsqrtf(v->z*v->z + v->x*v->x);
             float target_length = 6.12f / spacing;
             float3 unit_vector = float3(v->z * length * target_length, 0, -v->x * length * target_length);
-
-            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
-
-            *((float4*)p)=float4(
-			        p->x + slit_randomisation * unit_vector.x,
-			        p->y,
-			        p->z + slit_randomisation * unit_vector.z,
-			        p->w
-			    );
-
-            break;
-        }
-        case (MCX_SRC_ERROR_CHECKERBOARD):
-        {
-            *((float4*)p)=float4(
-			        170.0,
-			        p->y,
-			        170.0,
-			        p->w
-			    );
-
-            *((float4*)v)=float4(
-			         -0.7071,
-			         0,
-			         -0.7071,
-			         v->nscat
-			    );
-
-            float target_length = 30.0f;
-            float3 unit_vector = float3(v->z * target_length, 0, -v->x * target_length);
-
-            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
-
-            *((float4*)p)=float4(
-			        p->x + slit_randomisation * unit_vector.x,
-			        p->y,
-			        p->z + slit_randomisation * unit_vector.z,
-			        p->w
-			    );
-
-            break;
-        }
-        case (MCX_SRC_ERROR_STRIPES):
-        {
-            float ang = 1.25664f;
-            float detector_iso_distance = 74.05f;
-            float sin_ang, cos_ang;
-            sincosf(ang, &sin_ang, &cos_ang);
-
-            *((float4*)p)=float4(
-			        sin_ang * detector_iso_distance + p->x,
-			        p->y,
-			        cos_ang * detector_iso_distance  + p->z,
-			        p->w
-			    );
-
-            *((float4*)v)=float4(
-			         -sin_ang,
-			         0,
-			         -cos_ang,
-			         v->nscat
-			    );
-            float length = rsqrtf(v->z*v->z + v->x*v->x);
-            float target_length = 10.0f;
-            float3 unit_vector = float3(v->z * length * target_length, 0, -v->x * length * target_length);
-            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
-            *((float4*)p)=float4(
-			        p->x + slit_randomisation * unit_vector.x,
-			        p->y,
-			        p->z + slit_randomisation * unit_vector.z,
-			        p->w
-			    );   
-            break;
-        }
-        case(MCX_SRC_ERROR_DIFFERENT):
-        {
-            *((float4*)p)=float4(30.0, 40.0, 65.0, p->w);
-            *((float4*)v)=float4(0.894427, 0, 0.447213, v->nscat);
-
-
-            float target_length = 30.0f;
-            float3 unit_vector = float3(v->z * target_length, 0, -v->x * target_length);
 
             float slit_randomisation = 1.f-2.f*rand_uniform01(t);
 
