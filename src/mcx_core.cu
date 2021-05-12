@@ -1178,86 +1178,67 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
              // @param[in,out] rv: the reciprocal direction vector of the photon (rv[i]=1/v[i])
         {
             float sin_ang, cos_ang, ang;
-            int output_fibre_randomisation = (int) (rand_uniform01(t) * 10); // 10 possible locations enumerated 0 through 9
             float slit_position_randomisation = rand_uniform01(t);
             float opening_angle_randomisation = rand_uniform01(t);
 
-            float spacing = (float) gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1
-            float det_sep_half = 24.74f / (2 * spacing);
-            float detector_iso_distance = 74.05f / (2 * spacing);
+            float spacing = (float) gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1.x
+            int illuminator_id = (int) roundf(gcfg->srcparam1.y); // For the InVision system, the illuminator_id is encoded in srcparam1.y
             float illumination_angle = -0.41608649f;
             float angle_randomisation = 1.f-2.f*rand_uniform01(t);
             illumination_angle = illumination_angle + (angle_randomisation * 0.165806f);
 
-            if (output_fibre_randomisation == 0)
+            if (illuminator_id == 0)
             {
                 ang = 0.0f;
-                det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
-            else if (output_fibre_randomisation == 1)
+            else if (illuminator_id == 1)
             {
                 ang = 0.0f;
-                det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
-            else if (output_fibre_randomisation == 2)
+            else if (illuminator_id == 2)
             {
                 ang = 1.25664f;
-                det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
-            else if (output_fibre_randomisation == 3)
+            else if (illuminator_id == 3)
             {
                 ang = 1.25664f;
-                det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
-            else if (output_fibre_randomisation == 4)
+            else if (illuminator_id == 4)
             {
                 ang = -1.25664f;
-                det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
-            else if (output_fibre_randomisation == 5)
+            else if (illuminator_id == 5)
             {
                 ang = -1.25664f;
-                det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
-            else if (output_fibre_randomisation == 6)
+            else if (illuminator_id == 6)
             {
                 ang = 2.51327f;
-                det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
-            else if (output_fibre_randomisation == 7)
+            else if (illuminator_id == 7)
             {
                 ang = 2.51327f;
-                det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
-            else if (output_fibre_randomisation == 8)
+            else if (illuminator_id == 8)
             {
                 ang = -2.51327f;
-                det_sep_half = det_sep_half;
                 illumination_angle = illumination_angle;
             }
-            else if (output_fibre_randomisation == 9)
+            else if (illuminator_id == 9)
             {
                 ang = -2.51327f;
-                det_sep_half = -det_sep_half;
                 illumination_angle = -illumination_angle;
             }
 
             sincosf(ang, &sin_ang, &cos_ang);
-            *((float4*)p)=float4(
-			        sin_ang * detector_iso_distance + p->x,
-			        det_sep_half  + p->y,
-			        cos_ang * detector_iso_distance  + p->z,
-			        p->w
-			    );
-
             float length = rsqrtf(sin_ang * sin_ang + sinf(illumination_angle) * sinf(illumination_angle) + cos_ang * cos_ang);
             *((float4*)v)=float4(
 			         -sin_ang * length,
