@@ -11,11 +11,11 @@
 **          by Graphics Processing Units,"</a> Optics Express, 17(22) 20178-20190 (2009).
 **  \li \c (\b Yu2018) Leiming Yu, Fanny Nina-Paravecino, David Kaeli, and Qianqian Fang,
 **          "Scalable and massively parallel Monte Carlo photon transport
-**           simulations for heterogeneous computing platforms," J. Biomed. Optics, 
+**           simulations for heterogeneous computing platforms," J. Biomed. Optics,
 **           23(1), 010504, 2018. https://doi.org/10.1117/1.JBO.23.1.010504
-**  \li \c (\b Yan2020) Shijie Yan and Qianqian Fang* (2020), "Hybrid mesh and voxel 
-**          based Monte Carlo algorithm for accurate and efficient photon transport 
-**          modeling in complex bio-tissues," Biomed. Opt. Express, 11(11) 
+**  \li \c (\b Yan2020) Shijie Yan and Qianqian Fang* (2020), "Hybrid mesh and voxel
+**          based Monte Carlo algorithm for accurate and efficient photon transport
+**          modeling in complex bio-tissues," Biomed. Opt. Express, 11(11)
 **          pp. 6262-6270. https://doi.org/10.1364/BOE.409468
 **
 **  \section slicense License
@@ -30,7 +30,7 @@
 This unit contains both the GPU kernels (running on the GPU device) and host code
 (running on the host) that initializes GPU buffers, calling kernels, retrieving
 all computed results (fluence, diffuse reflectance detected photon data) from GPU,
-and post processing, such as normalization, saving data to file etc. The main 
+and post processing, such as normalization, saving data to file etc. The main
 function of the GPU kernel is \c mcx_main_loop and the main function of the
 host code is \c mcx_run_simulation.
 
@@ -40,6 +40,7 @@ This unit is written with CUDA-C and shall be compiled using nvcc in cuda-toolki
 
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include "stdio.h"
 
 #include "br2cu.h"
 #include "mcx_core.h"
@@ -552,11 +553,11 @@ __device__ void updateproperty(Medium *prop, unsigned int& mediaid, RandType t[R
                                uint media[], float3 *p, MCXsp *nuvox){
           /**
 	   * The default mcx input volume is assumed to be 4-byte per voxel
-	   * (SVMC mode requires 2x 4-byte voxels for 8 data points) 
+	   * (SVMC mode requires 2x 4-byte voxels for 8 data points)
 	   *
 	   * The data encoded in the voxel are parsed based on the gcfg->mediaformat flag.
-	   * Below, we use [s*] to represent 2-byte short integers; [h*] to represent a 
-	   * 2-byte half-precision floating point number; [c*] to represent 
+	   * Below, we use [s*] to represent 2-byte short integers; [h*] to represent a
+	   * 2-byte half-precision floating point number; [c*] to represent
 	   * 1-byte unsigned char integers and [i*] to represent 4-byte integers;
 	   * [f*] for 4-byte floating point number
 	   * index 0 starts from the lowest (least significant bit) end
@@ -1273,6 +1274,125 @@ __device__ inline int launchnewphoton(MCXpos *p,MCXdir *v,MCXtime *f,float3* rv,
                       canfocus=(gcfg->srctype==MCX_SRC_SLIT);
 		      break;
 		}
+		case(MCX_SRC_MSOT_ACUITY_ECHO):
+		{
+			float r=rand_uniform01(t);
+			float s=rand_uniform01(t);
+			float h=rand_uniform01(t);
+			*((float4*)p)=float4(p->x+(1.f-2.f*r)*gcfg->srcparam1.x/2.f,          //gcfg->srcparam1.x is the x-length of the slit
+							   p->y+s*gcfg->srcparam1.y,
+							   p->z+h*gcfg->srcparam1.z,
+							   p->w);
+			float angle=8.66f;        //full beam divergence angle measured at Full Width at Half Maximum (FWHM)
+			float FWHM=2.f*tanf(0.5f*angle*TWO_PI/360.f);       //FWHM of beam divergence
+			float sigma=FWHM/(2.f*sqrtf(2.f*logf(2.f)));        //standard deviation of gaussian with FWHM
+			float u1=rand_uniform01(t);
+			float u2=rand_uniform01(t);
+			float z0=sigma*sqrtf(-2.f*logf(u1))*cosf(TWO_PI*u2);      //random variable 0 from gaussian with standard deviation sigma
+			float z1=sigma*sqrtf(-2.f*logf(u1))*sinf(TWO_PI*u2);      //random variable 0 from gaussian with standard deviation sigma
+			float incident_angle=atanf(v->y/v->z);        //incident angle given by src_dir in .json file
+			float y_width=cosf(incident_angle)*z0;        //y-distance that needs to be added to the old dir-vector
+			float z_width=sinf(incident_angle)*z0;        //z-distance that needs to be added to the old dir-vector
+			*((float3*)v)=float3(v->x+z1, v->y+y_width, v->z+z_width);
+			float norm=rsqrtf(v->x*v->x+v->y*v->y+v->z*v->z);
+			*((float3*)v)=float3(v->x*norm, v->y*(norm), v->z*norm);
+
+			/**rv=float3(rv->x+(gcfg->srcparam1.x)*0.5f,
+					 rv->y+(gcfg->srcparam1.y)*0.5f,
+					 rv->z+(gcfg->srcparam1.z)*0.5f);*/
+			break;
+		}
+        case (MCX_SRC_INVISION):
+             // @param[in,out] p: the 3D position and weight of the photon
+             // @param[in,out] v: the direction vector of the photon
+             // @param[in,out] f: the parameter vector of the photon
+             // @param[in,out] rv: the reciprocal direction vector of the photon (rv[i]=1/v[i])
+        {
+            float sin_ang, cos_ang, ang;
+            float slit_position_randomisation = rand_uniform01(t);
+            float opening_angle_randomisation = rand_uniform01(t);
+
+            float spacing = (float) gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1.x
+            int illuminator_id = (int) roundf(gcfg->srcparam1.y); // For the InVision system, the illuminator_id is encoded in srcparam1.y
+            float illumination_angle = -0.41608649f;
+            float angle_randomisation = 1.f-2.f*rand_uniform01(t);
+            illumination_angle = illumination_angle + (angle_randomisation * 0.165806f);
+
+            if (illuminator_id == 0)
+            {
+                ang = 0.0f;
+                illumination_angle = illumination_angle;
+            }
+            else if (illuminator_id == 1)
+            {
+                ang = 0.0f;
+                illumination_angle = -illumination_angle;
+            }
+            else if (illuminator_id == 2)
+            {
+                ang = 1.25664f;
+                illumination_angle = illumination_angle;
+            }
+            else if (illuminator_id == 3)
+            {
+                ang = 1.25664f;
+                illumination_angle = -illumination_angle;
+            }
+            else if (illuminator_id == 4)
+            {
+                ang = -1.25664f;
+                illumination_angle = illumination_angle;
+            }
+            else if (illuminator_id == 5)
+            {
+                ang = -1.25664f;
+                illumination_angle = -illumination_angle;
+            }
+            else if (illuminator_id == 6)
+            {
+                ang = 2.51327f;
+                illumination_angle = illumination_angle;
+            }
+            else if (illuminator_id == 7)
+            {
+                ang = 2.51327f;
+                illumination_angle = -illumination_angle;
+            }
+            else if (illuminator_id == 8)
+            {
+                ang = -2.51327f;
+                illumination_angle = illumination_angle;
+            }
+            else if (illuminator_id == 9)
+            {
+                ang = -2.51327f;
+                illumination_angle = -illumination_angle;
+            }
+
+            sincosf(ang, &sin_ang, &cos_ang);
+            float length = rsqrtf(sin_ang * sin_ang + sinf(illumination_angle) * sinf(illumination_angle) + cos_ang * cos_ang);
+            *((float4*)v)=float4(
+			         -sin_ang * length,
+			         sinf(illumination_angle) * length,
+			         -cos_ang * length,
+			         v->nscat
+			    );
+
+            length = rsqrtf(v->z*v->z + v->x*v->x);
+            float target_length = 6.12f / spacing;
+            float3 unit_vector = float3(v->z * length * target_length, 0, -v->x * length * target_length);
+
+            float slit_randomisation = 1.f-2.f*rand_uniform01(t);
+
+            *((float4*)p)=float4(
+			        p->x + slit_randomisation * unit_vector.x,
+			        p->y,
+			        p->z + slit_randomisation * unit_vector.z,
+			        p->w
+			    );
+
+            break;
+        }
 	    }
 
 	    if(p->w<=gcfg->minenergy)
@@ -1493,7 +1613,7 @@ kernel void mcx_main_loop(uint media[],OutputType field[],float genergy[],uint n
      }
 
      /**
-	 The following lines initialize photon state variables, RNG states and 
+	 The following lines initialize photon state variables, RNG states and
       */
      rv=float3(__fdividef(1.f,v.x),__fdividef(1.f,v.y),__fdividef(1.f,v.z));
      isdet=mediaid & DET_MASK;
@@ -2127,18 +2247,18 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      int i,iter;
      float  minstep=1.f; //MIN(MIN(cfg->steps.x,cfg->steps.y),cfg->steps.z);
-     
+
      /** \c p0 - initial photon positions for pencil/isotropic/cone beams, used to initialize \c{p={x,y,z,w}} state in the GPU kernel */
      float4 p0=float4(cfg->srcpos.x,cfg->srcpos.y,cfg->srcpos.z,1.f);
-     
+
      /** \c c0 - initial photon direction state, used to initialize \c{MCXdir v={vx,vy,vz,}} state in the GPU kernel */
      float4 c0=cfg->srcdir;
      float3 maxidx=float3(cfg->dim.x,cfg->dim.y,cfg->dim.z);
      int timegate=0, totalgates, gpuid, threadid=0;
-     
+
      /** \c gpuphoton - number of photons to be simulated per thread, determined by total workload and thread number */
      size_t gpuphoton=0;
-     
+
      /** \c photoncount - number of completed photons returned by all thread, output */
      size_t photoncount=0;
 
@@ -2152,10 +2272,10 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      /** \c mcgrid - GPU grid size, only use 1D grid, used when launching the kernel in cuda <<<>>> operator */
      dim3 mcgrid;
-     
+
      /** \c mcblock - GPU block size, only use 1D block, used when launching the kernel in cuda <<<>>> operator */
      dim3 mcblock;
-     
+
      /** \c sharedbuf - shared memory buffer length to be requested, used when launching the kernel in cuda <<<>>> operator */
      uint sharedbuf=0;
 
@@ -2164,19 +2284,19 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      /** \c media - input volume representing the simulation domain, format specified in cfg.mediaformat, read-only */
      uint  *media=(uint *)(cfg->vol);
-     
+
      /** \c field - output volume to store GPU computed fluence, length is \c dimxyz */
      float  *field;
 
      /** \c rfimag - imaginary part of the RF Jacobian, length is \c dimxyz */
      OutputType  *rfimag=NULL;
-     
+
      /** \c Ppos - per-thread photon state initialization host buffers */
      float4 *Ppos,*Pdir,*Plen,*Plen0;
-     
+
      /** \c Pseed - per-thread RNG seed initialization host buffers */
      uint   *Pseed;
-     
+
      /** \c Pdet - output host buffer to store detected photon partial-path and other per-photon data */
      float  *Pdet;
 
@@ -2185,7 +2305,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      /** \c srcpw, \c energytot, \c energyabs - output host buffers to accummulate total launched/absorbed energy per pattern in photon sharing, needed for normalization of multi-pattern simulations */
      float  *srcpw=NULL,*energytot=NULL,*energyabs=NULL; // for multi-srcpattern
-     
+
      /** \c seeddata - output buffer to store RNG initial seeds for each detected photon for replay */
      RandType *seeddata=NULL;
 
@@ -2212,21 +2332,21 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      /**
       *                            |----------------------------------------------->  hostdetreclen  <--------------------------------------|
-      *                                      |------------------------>    partialdata   <-------------------|                               
-      *host detected photon buffer: detid (1), partial_scat (#media), partial_path (#media), momontum (#media), p_exit (3), v_exit(3), w0 (1) 
+      *                                      |------------------------>    partialdata   <-------------------|
+      *host detected photon buffer: detid (1), partial_scat (#media), partial_path (#media), momontum (#media), p_exit (3), v_exit(3), w0 (1)
       *                                      |--------------------------------------------->    w0offset   <-------------------------------------||<----- w0 (#srcnum) ----->||<- RF replay (2)->|
       *gpu detected photon buffer:            partial_scat (#media), partial_path (#media), momontum (#media), E_escape (1), E_launch (1), w0 (1), w0_photonsharing (#srcnum)   cos(w*T),sin(w*T)
       */
 
      //< \c partialdata: per-photon buffer length for media-specific data, copy from GPU to host
-     unsigned int partialdata=(cfg->medianum-1)*(SAVE_NSCAT(cfg->savedetflag)+SAVE_PPATH(cfg->savedetflag)+SAVE_MOM(cfg->savedetflag)); 
-     
+     unsigned int partialdata=(cfg->medianum-1)*(SAVE_NSCAT(cfg->savedetflag)+SAVE_PPATH(cfg->savedetflag)+SAVE_MOM(cfg->savedetflag));
+
      //< \c w0offset - offset in the per-photon buffer to the start of the photon sharing related data
      unsigned int w0offset=partialdata+3;
-     
+
      //< \c hostdetreclen - host-side det photon data buffer per-photon length
      unsigned int hostdetreclen=partialdata+SAVE_DETID(cfg->savedetflag)+3*(SAVE_PEXIT(cfg->savedetflag)+SAVE_VEXIT(cfg->savedetflag))+SAVE_W0(cfg->savedetflag);
-     
+
      //< \c is2d - flag to tell mcx if the simulation domain is 2D, set to 1 if any of the x/y/z dimensions has a length of 1
      unsigned int is2d=(cfg->dim.x==1 ? 1 : (cfg->dim.y==1 ? 2 : (cfg->dim.z==1 ? 3 : 0)));
 
@@ -2243,7 +2363,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 		     (uint)cfg->maxjumpdebug,cfg->gscatter,is2d,cfg->replaydet,cfg->srcnum,cfg->nphase,cfg->omega};
      if(param.isatomic)
          param.skipradius2=0.f;
-	 
+
      /** Start multiple CPU threads using OpenMP, one thread for each GPU device to run simultaneously, \c threadid returns the current thread ID */
 #ifdef _OPENMP
      threadid=omp_get_thread_num();
@@ -2255,7 +2375,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
      gpuid=cfg->deviceid[threadid]-1;
      if(gpuid<0)
           mcx_error(-1,"GPU ID must be non-zero",__FILE__,__LINE__);
-	  
+
      /** Activate the corresponding GPU device */
      CUDA_ASSERT(cudaSetDevice(gpuid));
 
@@ -2308,7 +2428,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 	    cfg->maxgate=gates;
 	gpu[gpuid].maxgate=cfg->maxgate;
      }
-     
+
      /** If total thread number is not integer multiples of block size, round it to the largest block size multiple */
      if(gpu[gpuid].autothread%gpu[gpuid].autoblock)
      	gpu[gpuid].autothread=(gpu[gpuid].autothread/gpu[gpuid].autoblock)*gpu[gpuid].autoblock;
@@ -2367,7 +2487,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
      }else{
          mcx_error(-1,"respin number can not be 0, check your -r/--repeat input or cfg.respin value",__FILE__,__LINE__);
      }
-     
+
      /** Total time gate number is computed */
      totalgates=(int)((cfg->tend-cfg->tstart)/cfg->tstep+0.5);
 #pragma omp master
@@ -2387,7 +2507,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      /** A 1D grid is determined by the total thread number and block size */
      mcgrid.x=gpu[gpuid].autothread/gpu[gpuid].autoblock;
-     
+
      /** A 1D block is determined by the user specified block size, or by default, 64, determined emperically to get best performance */
      mcblock.x=gpu[gpuid].autoblock;
 
@@ -2437,8 +2557,8 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 	   return;
      }
 
-     /** 
-       * Allocate all host buffers to store input or output data 
+     /**
+       * Allocate all host buffers to store input or output data
        */
 
      Ppos=(float4*)malloc(sizeof(float4)*gpu[gpuid].autothread); /** \c Ppos: host buffer for initial photon position+weight */
@@ -2452,7 +2572,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
      else
          Pseed=(uint*)malloc(sizeof(RandType)*cfg->nphoton*RAND_BUF_LEN); /** \c Pseed: RNG seeds for photon replay in GPU threads */
 
-     /** 
+     /**
        * Allocate all GPU buffers to store input or output data
        */
      if(cfg->mediabyte!=MEDIA_2LABEL_SPLIT)
@@ -2468,7 +2588,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
      CUDA_ASSERT(cudaMalloc((void **) &gdetected, sizeof(uint)));
      CUDA_ASSERT(cudaMalloc((void **) &genergy, sizeof(float)*(gpu[gpuid].autothread<<1)));
 
-     /** 
+     /**
        * Allocate pinned memory variable, progress, for real-time update during kernel run-time
        */
      CUDA_ASSERT(cudaHostAlloc((void **)&progress, sizeof(int), cudaHostAllocMapped));
@@ -2486,7 +2606,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
          CUDA_ASSERT(cudaMalloc((void **) &ginvcdf, sizeof(float)*cfg->nphase));
 	 CUDA_ASSERT(cudaMemcpy(ginvcdf,cfg->invcdf,sizeof(float)*cfg->nphase, cudaMemcpyHostToDevice));
      }
-     /** 
+     /**
        * Allocate and copy data needed for photon replay, the needed variables include
        * \c gPseed per-photon seed to be replayed
        * \c greplayw per-photon initial weight
@@ -2511,7 +2631,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
      }else
          CUDA_ASSERT(cudaMalloc((void **) &gPseed, sizeof(RandType)*gpu[gpuid].autothread*RAND_BUF_LEN));
 
-     /** 
+     /**
        * Allocate and copy source pattern buffer for 2D and 3D pattern sources
        */
      if(cfg->srctype==MCX_SRC_PATTERN)
@@ -2521,7 +2641,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 	 
 #ifndef SAVE_DETECTORS
 #pragma omp master
-     /** 
+     /**
        * Saving detected photon is enabled by default, but in case if a user disabled this feature, a warning is printed
        */
      if(cfg->issavedet){
@@ -2531,7 +2651,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 #pragma omp barrier
 #endif
 
-     /** 
+     /**
        * Pre-compute array dimension strides to move in +-x/y/z dimension quickly in the GPU, stored in the constant memory
        */
      /** Inside the GPU kernel, volume is always assumbed to be col-major (like those generated by MATLAB or FORTRAN) */
@@ -2546,7 +2666,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
      param.dimlen=dimlen;
      param.cachebox=cachebox;
 
-     /** 
+     /**
        * Additional constants to avoid repeated computation inside GPU
        */
      if(p0.x<0.f || p0.y<0.f || p0.z<0.f || p0.x>=cfg->dim.x || p0.y>=cfg->dim.y || p0.z>=cfg->dim.z){
@@ -2569,7 +2689,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
            Plen[i]=float4(0.f,0.f,param.minaccumtime,0.f);
      }
 
-     /** 
+     /**
        * Get ready to start GPU simulation here, clock is now ticking ...
        */
      tic=StartTimer();
@@ -2589,7 +2709,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 }
 #pragma omp barrier
 
-     /** 
+     /**
        * Copy all host buffers to the GPU
        */
      MCX_FPRINTF(cfg->flog,"\nGPU=%d (%s) threadph=%d extra=%d np=%ld nthread=%d maxgate=%d repetition=%d\n",gpuid+1,gpu[gpuid].name,param.threadphoton,param.oddphotons,
@@ -2610,7 +2730,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 	else if(cfg->srctype==MCX_SRC_PATTERN3D)
 	   CUDA_ASSERT(cudaMemcpy(gsrcpattern,cfg->srcpattern,sizeof(float)*(int)(cfg->srcparam1.x*cfg->srcparam1.y*cfg->srcparam1.z*cfg->srcnum), cudaMemcpyHostToDevice));
      
-     /** 
+     /**
        * Copy constants to the constant memory on the GPU
        */
      CUDA_ASSERT(cudaMemcpyToSymbol(gproperty, cfg->prop,  cfg->medianum*sizeof(Medium), 0, cudaMemcpyHostToDevice));
@@ -2634,7 +2754,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 
      MCX_FPRINTF(cfg->flog,"requesting %d bytes of shared memory\n",sharedbuf);
 
-     /** 
+     /**
        * Outer loop: loop over each time-gate-group, determined by the capacity of the global memory to hold the output data, in most cases, \c totalgates is 1
        */
      for(timegate=0;timegate<totalgates;timegate+=gpu[gpuid].maxgate){
@@ -2692,16 +2812,16 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
            mcx_flush(cfg);
 
            /**
-             * Determine template constants for compilers to build specialized binary instances to reduce branching 
+             * Determine template constants for compilers to build specialized binary instances to reduce branching
 	     * and thread-divergence. If not using template, the performance can take a 20% drop.
              */
 
 	   /** \c ispencil: template constant, if 1, launch photon code is dramatically simplified */
            int ispencil=(cfg->srctype==MCX_SRC_PENCIL);
-	   
+
 	   /** \c isref: template constant, if 1, perform boundary reflection, if 0, total-absorbion boundary, can simplify kernel */
 	   int isref=cfg->isreflect;
-	   
+
 	   /** \c issvmc: template constant, if 1, consider the input volume containing split-voxel data, see Yan2020 for details */
 	   int issvmc=(cfg->mediabyte==MEDIA_2LABEL_SPLIT);
 
@@ -2711,7 +2831,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
 	           isref=1;
            /**
              * Launch GPU kernel using template constants. Here, the compiler will create 2^4=16 individually compiled
-	     * kernel PTX binaries for each combination of template variables. This creates bigger binary and slower 
+	     * kernel PTX binaries for each combination of template variables. This creates bigger binary and slower
 	     * compilation time, but brings up to 20%-30% speed improvement on certain simulations.
              */
 	   switch(ispencil*1000 + (isref>0)*100 + (cfg->mediabyte<=4)*10 + issvmc){
@@ -2757,7 +2877,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
                ndone = *progress;
 	       if (ndone > p0){
                   /**
-                    * Here we use the below formula to compute the 0-100% completion ratio. 
+                    * Here we use the below formula to compute the 0-100% completion ratio.
 		    * Only half of the threads updates the progress, and each thread only update
 		    * the counter 5 times at 0%/25%/50%/75%/100% progress to minimize overhead while
 		    * still providing a smooth progress bar.
@@ -2779,7 +2899,7 @@ void mcx_run_simulation(Config *cfg,GPUInfo *gpu){
            CUDA_ASSERT(cudaDeviceSynchronize());
            /** Here, the GPU kernel is completely executed and returned */
 	   CUDA_ASSERT(cudaMemcpy(&detected, gdetected,sizeof(uint),cudaMemcpyDeviceToHost));
-	   
+
 	   /** now we can estimate and print the GPU-kernel-only runtime */
            tic1=GetTimeMillis();
 	   toc+=tic1-tic0;
@@ -2978,9 +3098,9 @@ is more than what your have specified (%d), please use the -H option to specify 
        * Now we normalize the fluence so that the default output is fluence rate in joule/(s*mm^2)
        * generated by a unitary source (1 joule total).
        *
-       * The raw output directly from GPU is the accumulated energy-loss per photon moving step 
+       * The raw output directly from GPU is the accumulated energy-loss per photon moving step
        * in joule when cfg.outputtype='fluence', or energy-loss multiplied by mua (1/mm) per voxel
-       * (joule/mm) when cfg.outputtype='flux' (default). 
+       * (joule/mm) when cfg.outputtype='flux' (default).
        */
      if(cfg->isnormalized){
 	   float *scale=(float *)calloc(cfg->srcnum,sizeof(float));
@@ -3044,7 +3164,7 @@ is more than what your have specified (%d), please use the -H option to specify 
          MCX_FPRINTF(cfg->flog,"data normalization complete : %d ms\n",GetTimeMillis()-tic);
      }
      /**
-       * If not running as a mex file, we need to save volumetric output data, if enabled, as 
+       * If not running as a mex file, we need to save volumetric output data, if enabled, as
        * a file, with suffix specifed by cfg.outputformat (mc2,nii, or .jdat or .jbat)
        */
      if(cfg->issave2pt && cfg->parentid==mpStandalone){
@@ -3054,7 +3174,7 @@ is more than what your have specified (%d), please use the -H option to specify 
          fflush(cfg->flog);
      }
      /**
-       * If not running as a mex file, we need to save detected photon data, if enabled, as 
+       * If not running as a mex file, we need to save detected photon data, if enabled, as
        * a file, either as a .mch file, or a .jdat/.jbat file
        */
      if(cfg->issavedet && cfg->parentid==mpStandalone && cfg->exportdetected){
@@ -3068,7 +3188,7 @@ is more than what your have specified (%d), please use the -H option to specify 
          mcx_savedetphoton(cfg->exportdetected,cfg->seeddata,cfg->detectedcount,0,cfg);
      }
      /**
-       * If not running as a mex file, we need to save photon trajectory data, if enabled, as 
+       * If not running as a mex file, we need to save photon trajectory data, if enabled, as
        * a file, either as a .mct file, or a .jdat/.jbat file
        */
      if((cfg->debuglevel & MCX_DEBUG_MOVE) && cfg->parentid==mpStandalone && cfg->exportdebugdata){

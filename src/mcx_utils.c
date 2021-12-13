@@ -11,11 +11,11 @@
 **          by Graphics Processing Units,"</a> Optics Express, 17(22) 20178-20190 (2009).
 **  \li \c (\b Yu2018) Leiming Yu, Fanny Nina-Paravecino, David Kaeli, and Qianqian Fang,
 **          "Scalable and massively parallel Monte Carlo photon transport
-**           simulations for heterogeneous computing platforms," J. Biomed. Optics, 
+**           simulations for heterogeneous computing platforms," J. Biomed. Optics,
 **           23(1), 010504, 2018. https://doi.org/10.1117/1.JBO.23.1.010504
-**  \li \c (\b Yan2020) Shijie Yan and Qianqian Fang* (2020), "Hybrid mesh and voxel 
-**          based Monte Carlo algorithm for accurate and efficient photon transport 
-**          modeling in complex bio-tissues," Biomed. Opt. Express, 11(11) 
+**  \li \c (\b Yan2020) Shijie Yan and Qianqian Fang* (2020), "Hybrid mesh and voxel
+**          based Monte Carlo algorithm for accurate and efficient photon transport
+**          modeling in complex bio-tissues," Biomed. Opt. Express, 11(11)
 **          pp. 6262-6270. https://doi.org/10.1364/BOE.409468
 **
 **  \section slicense License
@@ -189,7 +189,7 @@ const char boundarydetflag[]={'0','1','\0'};
 
 const char *srctypeid[]={"pencil","isotropic","cone","gaussian","planar",
     "pattern","fourier","arcsine","disk","fourierx","fourierx2d","zgaussian",
-    "line","slit","pencilarray","pattern3d","hyperboloid",""};
+    "line","slit","pencilarray","pattern3d","hyperboloid","invision", "msot_acuity_echo", ""};
 
 
 /**
@@ -2151,7 +2151,7 @@ void mcx_savejdata(char *filename, Config *cfg){
 	 dims[1]=cfg->srcparam1.w;
 	 dims[2]=cfg->srcparam2.w;
 	 cJSON_AddItemToObject(sub, "Pattern", tmp = cJSON_CreateObject());
-	 
+
 	 int ret=mcx_jdataencode(cfg->srcpattern,2+(cfg->srcnum>1),dims+(cfg->srcnum==1),"single", dims[0]*dims[1]*dims[2], cfg->zipid, tmp, 0, cfg);
 	 if(ret)
 	     MCX_ERROR(ret,"data compression or base64 encoding failed");

@@ -23,15 +23,15 @@ endif()
 set(
     CUDA_NVCC_FLAGS
     ${CUDA_NVCC_FLAGS};
-    -g -lineinfo -Xcompiler -Wall -Xcompiler -fopenmp -O3 -arch=sm_30
+    -g -lineinfo -Xcompiler -Wall -Xcompiler -fopenmp -O3 -arch=sm_35
     -DMCX_TARGET_NAME="Fermi MCX" -DUSE_ATOMIC -use_fast_math
     -DSAVE_DETECTORS -Xcompiler -fPIC
     )
 
 # C Options
 set(CMAKE_C_FLAGS "-g -Wall -std=c99 -fopenmp -fPIC")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../bin)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/../lib)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Add include directories
 include_directories(cjson ubj zmat zmat/easylzma)
@@ -47,6 +47,7 @@ cuda_add_library(mcx STATIC
     mcx_utils.h
     mcx_shapes.c
     mcx_shapes.h
+    mcx_const.h
     mcx_bench.c
     mcx_bench.h
     tictoc.c
@@ -64,7 +65,7 @@ cuda_add_executable(
     )
 
 set_target_properties(mcx-exe
-        PROPERTIES OUTPUT_NAME mcx)
+        PROPERTIES OUTPUT_NAME mcx-exe)
 
 # Link options
 target_link_libraries(

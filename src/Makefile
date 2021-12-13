@@ -107,7 +107,7 @@ else
   endif
 endif
 
-CUGENCODE?=-arch=sm_30
+CUGENCODE?=-arch=sm_80
 OUTPUTFLAG:=-o
 
 ##  Target section  ##
