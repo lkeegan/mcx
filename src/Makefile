@@ -66,10 +66,11 @@ CPPOPT=-g -Wall -std=c99 #-DNO_LZMA # -DUSE_OS_TIMER
 OBJSUFFIX=.o
 EXESUFFIX=
 
-FILES=mcx_core mcx_utils mcx_shapes tictoc mcextreme mcx_bench cjson/cJSON ubj/ubjw
+FILES=mcx_core mcx_utils mcx_shapes tictoc mcextreme mcx_bench mcx_mie cjson/cJSON ubj/ubjw
 
 ifeq ($(findstring CYGWIN,$(PLATFORM)), CYGWIN)
   CC=nvcc
+  CXX=nvcc
   CUOMPLINK=-Xcompiler
   ifeq ($(findstring x86_64,$(ARCH)), x86_64)
       LINKOPT=-L"$(CUDA_PATH)/lib/x64" $(CUDART)
@@ -244,6 +245,9 @@ $(OUTPUT_DIR)/$(BINARY): $(OBJS)
 
 %$(OBJSUFFIX): %.c
 	$(CC) $(INCLUDEDIRS) $(CPPOPT) -c -o $@  $<
+
+%$(OBJSUFFIX): %.cpp
+	$(CXX) $(INCLUDEDIRS) $(CPPOPT) -c -o $@  $<
 
 mcx_bench$(OBJSUFFIX): mcx_bench.c
 	$(GCC) $(INCLUDEDIRS) -c -o mcx_bench$(OBJSUFFIX)  $<

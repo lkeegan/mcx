@@ -45,6 +45,7 @@
 #include "mcx_shapes.h"
 #include "mcx_core.h"
 #include "mcx_bench.h"
+#include "mcx_mie.h"
 #include "zmat/zmatlib.h"
 #include "ubj/ubj.h"
 
@@ -151,7 +152,7 @@ const char debugflag[]={'R','M','P','\0'};
  * W: initial weight [1]
  */
 
-const char saveflag[]={'D','S','P','M','X','V','W','\0'};
+const char saveflag[]={'D','S','P','M','X','V','W','I','\0'};
 
 /**
  * Output file format
@@ -218,6 +219,7 @@ const char *zipformat[]={"zlib","gzip","base64","lzip","lzma","lz4","lz4hc",""};
 
 void mcx_initcfg(Config *cfg){
      cfg->medianum=0;
+     cfg->polmedianum=0;
      cfg->mediabyte=1;        /** expect 1-byte per medium index, use --mediabyte to set to 2 or 4 */
      cfg->detnum=0;
      cfg->dim.x=0;
@@ -240,7 +242,9 @@ void mcx_initcfg(Config *cfg){
      cfg->issave2pt=1;
      cfg->isgpuinfo=0;
      cfg->prop=NULL;
+     cfg->polprop=NULL;
      cfg->detpos=NULL;
+     cfg->smatrix=NULL;
      cfg->vol=NULL;
      cfg->session[0]='\0';
      cfg->printnum=0;
@@ -270,6 +274,7 @@ void mcx_initcfg(Config *cfg){
      cfg->energyesc=0.f;
      cfg->zipid=zmZlib;
      cfg->omega=0.f;
+     cfg->lambda=0.f;
      /*cfg->his=(History){{'M','C','X','H'},1,0,0,0,0,0,0,1.f,{0,0,0,0,0,0,0}};*/   /** This format is only supported by C99 */
      memset(&cfg->his,0,sizeof(History));
      memcpy(cfg->his.magic,"MCXH",4);
@@ -346,6 +351,10 @@ void mcx_cleargpuinfo(GPUInfo **gpuinfo){
 void mcx_clearcfg(Config *cfg){
      if(cfg->medianum)
      	free(cfg->prop);
+     if(cfg->polmedianum)
+        free(cfg->polprop);
+     if(cfg->smatrix)
+        free(cfg->smatrix);
      if(cfg->detnum)
      	free(cfg->detpos);
      if(cfg->dim.x && cfg->dim.y && cfg->dim.z)
@@ -1199,6 +1208,18 @@ void mcx_preprocess(Config *cfg){
 	   isbcdet=1;
     }
 
+    if(cfg->vol && cfg->polprop){
+        if(!(cfg->mediabyte<=4)) MCX_ERROR(-1,"Unsupported media format");
+        if(cfg->medianum!=cfg->polmedianum+1)
+            MCX_ERROR(-6,"number of particle types does not match number of media");
+        if(cfg->lambda==0.f)
+            MCX_ERROR(-1,"you must specify light wavelength lambda to run polarized photon simulation");
+	if(cfg->srciquv.x<0.f) MCX_ERROR(-4,"initial total light intensity must not be negative");
+	if(cfg->srciquv.y<-1.f || cfg->srciquv.y>1.f || cfg->srciquv.z<-1.f || cfg->srciquv.z>1.f || cfg->srciquv.w<-1.f || cfg->srciquv.w>1.f)
+	    MCX_ERROR(-4,"initial Q, U and V must be floating-point numbers between -1 and 1");
+        mcx_prep_polarized(cfg); // cfg->medianum will be updated
+    }
+
     if(cfg->medianum==0)
         MCX_ERROR(-4,"you must define the 'prop' field in the input structure");
     if(cfg->dim.x==0||cfg->dim.y==0||cfg->dim.z==0)
@@ -1307,12 +1328,21 @@ void mcx_preprocess(Config *cfg){
          cfg->savedetflag=SET_SAVE_PEXIT(cfg->savedetflag);
 	 cfg->savedetflag=SET_SAVE_VEXIT(cfg->savedetflag);
     }
+    if(cfg->polmedianum){
+         cfg->savedetflag=SET_SAVE_PPATH(cfg->savedetflag);
+         cfg->savedetflag=SET_SAVE_VEXIT(cfg->savedetflag);
+         cfg->savedetflag=SET_SAVE_W0(cfg->savedetflag);
+         cfg->savedetflag=SET_SAVE_IQUV(cfg->savedetflag);
+    }else{
+         cfg->savedetflag=UNSET_SAVE_IQUV(cfg->savedetflag);
+    }
     if(cfg->issavedet && cfg->savedetflag==0)
          cfg->savedetflag=0x5;
     if(cfg->mediabyte>=100 && cfg->savedetflag){
 	 cfg->savedetflag=UNSET_SAVE_NSCAT(cfg->savedetflag);
 	 cfg->savedetflag=UNSET_SAVE_PPATH(cfg->savedetflag);
 	 cfg->savedetflag=UNSET_SAVE_MOM(cfg->savedetflag);
+         cfg->savedetflag=UNSET_SAVE_IQUV(cfg->savedetflag);
     }
     if(cfg->issaveref>1){
         if(cfg->issavedet==0)
@@ -1324,6 +1354,54 @@ void mcx_preprocess(Config *cfg){
         }
 	cfg->savedetflag=0x5;
     }
+}
+
+/**
+ * @brief Preprocess media to prepare polarized photon simulation
+ * 
+ * This function precompute the scattering coefficent and smatrix for
+ * different sphere-medium combinations.
+ * 
+ * @param[in] cfg: simulation configuration
+ */
+
+void mcx_prep_polarized(Config *cfg){
+    /* precompute cosine of discretized scattering angles */
+    double *mu=(double *)malloc(NANGLES*sizeof(double));
+    for(int i=0;i<NANGLES;i++){
+        mu[i]=cos(ONE_PI*i/(NANGLES-1));
+    }
+    
+    cfg->smatrix=(float4 *)malloc(cfg->polmedianum*NANGLES*sizeof(float4));
+    Medium *prop=cfg->prop;
+    POLMedium *polprop=cfg->polprop;
+
+    for(int i=0;i<cfg->polmedianum;i++){
+        prop[i+1].mua=polprop[i].mua;
+        prop[i+1].n=polprop[i].nmed;
+        
+        /* for (i-1)th sphere(r, rho, nsph)-background medium(nmed) combination, compute mus and s-matrix */
+        double x,A,qsca,g;
+        x=TWO_PI*polprop[i].r*polprop[i].nmed/(cfg->lambda*1e-3); // size parameter (unitless)
+        A=ONE_PI*polprop[i].r*polprop[i].r;                           // cross-sectional area in micron^2
+        Mie(x,polprop[i].nsph/polprop[i].nmed,mu,cfg->smatrix+i*NANGLES,&qsca,&g);
+        
+        if(prop[i+1].mus>EPS) {
+            float target_mus=prop[i+1].mus; // achieve target mus
+            if(prop[i+1].g<1.f-EPS) {
+                float target_musp=prop[i+1].mus*(1.0f-prop[i+1].g); // achieve target mus(1-g)
+                target_mus=target_musp/(1.0-g);
+            }
+            polprop[i].rho=target_mus/qsca/A*1e-3;
+        }
+
+        /* compute scattering coefficient (in mm^-1) */
+        prop[i+1].mus=qsca*A*polprop[i].rho*1e3;
+
+        /* store anisotropy g (not used in polarized MCX simulation) */
+        prop[i+1].g=g;
+    }
+    free(mu);
 }
 
 /**
@@ -1348,6 +1426,9 @@ void mcx_prepdomain(char *filename, Config *cfg){
 	     mcx_loadvolume(filename,cfg,0);
 	     if(cfg->shapedata && strstr(cfg->shapedata,":")!=NULL){
 	          int status;
+                  if(cfg->mediabyte>4){
+                      MCX_ERROR(-10, "rasterization of shapes must be used with label-based mediatype");
+                  }
      		  Grid3D grid={&(cfg->vol),&(cfg->dim),{1.f,1.f,1.f},cfg->isrowmajor};
         	  if(cfg->issrcfrom0) memset(&(grid.orig.x),0,sizeof(float3));
 		  status=mcx_parse_shapestring(&grid,cfg->shapedata);
@@ -1672,6 +1753,39 @@ int mcx_loadjson(cJSON *root, Config *cfg){
              }
            }
         }
+        meds=FIND_JSON_OBJ("MieScatter","Domain.MieScatter",Domain);
+        if(meds){
+            cJSON *med=meds->child;
+            if(med){
+                cfg->polmedianum=cJSON_GetArraySize(meds);
+                if(cfg->polprop) free(cfg->polprop);
+                cfg->polprop=(POLMedium*)malloc(cfg->polmedianum*sizeof(POLMedium));
+                for(i=0;i<cfg->polmedianum;i++){
+                    if(cJSON_IsObject(med)){
+                        cJSON *val=FIND_JSON_OBJ("mua",(MCX_ERROR(-1,"You must specify absorption coeff, default in 1/mm"),""),med);
+                        if(val) cfg->polprop[i].mua=val->valuedouble;
+                        val=FIND_JSON_OBJ("radius",(MCX_ERROR(-1,"You must specify sphere particle radius, default in micron"),""),med);
+                        if(val) cfg->polprop[i].r=val->valuedouble;
+                        val=FIND_JSON_OBJ("rho",(MCX_ERROR(-1,"You must specify particle volume density default in 1/micron^3"),""),med);
+                        if(val) cfg->polprop[i].rho=val->valuedouble;
+                        val=FIND_JSON_OBJ("nsph",(MCX_ERROR(-1,"You must specify particle sphere refractive index"),""),med);
+                        if(val) cfg->polprop[i].nsph=val->valuedouble;
+                        val=FIND_JSON_OBJ("nmed",(MCX_ERROR(-1,"You must specify particle background medium refractive index"),""),med);
+                        if(val) cfg->polprop[i].nmed=val->valuedouble;
+                    }else if(cJSON_IsArray(med)){
+                        cfg->polprop[i].mua=med->child->valuedouble;
+                        cfg->polprop[i].r=med->child->next->valuedouble;
+                        cfg->polprop[i].rho=med->child->next->next->valuedouble;
+                        cfg->polprop[i].nsph=med->child->next->next->next->valuedouble;
+                        cfg->polprop[i].nmed=med->child->next->next->next->next->valuedouble;
+                    }else{
+                       MCX_ERROR(-1,"Domain.MieScatter must be either an array of objects or array of 5-elem numerical arrays");
+                    }
+                    med=med->next;
+                    if(med==NULL) break;
+                }
+            }
+        }
 	val=FIND_JSON_OBJ("Dim","Domain.Dim",Domain);
 	if(val && cJSON_GetArraySize(val)>=3){
 	   cfg->dim.x=val->child->valueint;
@@ -1832,6 +1946,13 @@ int mcx_loadjson(cJSON *root, Config *cfg){
 	             cfg->srcdir.w=subitem->child->next->next->next->valuedouble;
 	      }
            }
+           subitem=FIND_JSON_OBJ("IQUV","Optode.Source.IQUV",src);
+           if(subitem){
+              cfg->srciquv.x=subitem->child->valuedouble;
+              cfg->srciquv.y=subitem->child->next->valuedouble;
+              cfg->srciquv.z=subitem->child->next->next->valuedouble;
+              cfg->srciquv.w=subitem->child->next->next->next->valuedouble;
+           }
 	   if(!cfg->issrcfrom0){
               cfg->srcpos.x--;cfg->srcpos.y--;cfg->srcpos.z--; /*convert to C index, grid center*/
 	   }
@@ -1862,6 +1983,7 @@ int mcx_loadjson(cJSON *root, Config *cfg){
            }
 	   cfg->omega=FIND_JSON_KEY("Frequency","Optode.Source.Frequency",src,0.f,valuedouble);
 	   cfg->omega*=TWO_PI;
+           cfg->lambda=FIND_JSON_KEY("WaveLength","Optode.Source.WaveLength",src,0.f,valuedouble);
 	   cfg->srcnum=FIND_JSON_KEY("SrcNum","Optode.Source.SrcNum",src,cfg->srcnum,valueint);
            subitem=FIND_JSON_OBJ("Pattern","Optode.Source.Pattern",src);
            if(subitem){
@@ -1942,8 +2064,10 @@ int mcx_loadjson(cJSON *root, Config *cfg){
         char val[1];
 	if(!flagset['E'])  cfg->seed=FIND_JSON_KEY("RNGSeed","Session.RNGSeed",Session,-1,valueint);
         if(!flagset['n'])  cfg->nphoton=FIND_JSON_KEY("Photons","Session.Photons",Session,0,valuedouble);
+        if(!flagset['H'])  cfg->maxdetphoton=FIND_JSON_KEY("MaxDetPhoton","Session.MaxDetPhoton",Session,cfg->maxdetphoton,valuedouble);
         if(cfg->session[0]=='\0')  strncpy(cfg->session, FIND_JSON_KEY("ID","Session.ID",Session,"default",valuestring), MAX_SESSION_LENGTH);
         if(cfg->rootpath[0]=='\0') strncpy(cfg->rootpath, FIND_JSON_KEY("RootPath","Session.RootPath",Session,"",valuestring), MAX_PATH_LENGTH);
+        if(!flagset['B'])  strncpy(cfg->bc, FIND_JSON_KEY("BCFlags","Session.BCFlags",Session,cfg->bc,valuestring), 12);
 
         if(!flagset['b'])  cfg->isreflect=FIND_JSON_KEY("DoMismatch","Session.DoMismatch",Session,cfg->isreflect,valueint);
         if(!flagset['S'])  cfg->issave2pt=FIND_JSON_KEY("DoSaveVolume","Session.DoSaveVolume",Session,cfg->issave2pt,valueint);
@@ -1977,6 +2101,7 @@ int mcx_loadjson(cJSON *root, Config *cfg){
                 MCX_ERROR(-2,"the specified output data type is not recognized");
         }
 	if(!flagset['O']) cfg->outputtype=val[0];
+        if(!flagset['e']) cfg->minenergy=FIND_JSON_KEY("MinEnergy","Session.MinEnergy",Session,cfg->minenergy,valuedouble);
      }
      if(Forward){
         uint gates;
@@ -2305,6 +2430,8 @@ void mcx_loadvolume(char *filename,Config *cfg,int isbuf){
          f2i.f=val[i]*cfg->unitinmm;
 	 if(f2i.i==0) /*avoid being detected as a 0-label voxel*/
 	     f2i.f=EPS;
+         if(val[i]!=val[i]) /*if input is nan in continuous medium, convert to 0-voxel*/
+             f2i.i=0;
          cfg->vol[i]=f2i.i;
        }
      }else if(cfg->mediabyte==MEDIA_AS_F2H){
@@ -2319,6 +2446,10 @@ void mcx_loadvolume(char *filename,Config *cfg,int isbuf){
 	    f2h.f[0]=val[i<<1]*cfg->unitinmm;
 	    f2h.f[1]=val[(i<<1)+1]*cfg->unitinmm;
 
+	    if(f2h.f[0]!=f2h.f[0] || f2h.f[1]!=f2h.f[1]){ /*if one of mua/mus is nan in continuous medium, convert to 0-voxel*/
+	        cfg->vol[i]=0;
+                continue;
+            }
             /**
 	        float to half conversion
 	        https://stackoverflow.com/questions/3026441/float32-to-float16/5587983#5587983
@@ -2362,9 +2493,10 @@ void mcx_loadvolume(char *filename,Config *cfg,int isbuf){
      }else if(cfg->mediabyte==MEDIA_2LABEL_SPLIT){
         memcpy(cfg->vol,inputvol,(datalen<<3));
      }
+     int medianum=MAX(cfg->medianum,cfg->polmedianum+1);
      if(cfg->mediabyte<=4)
        for(i=0;i<datalen;i++){
-         if(cfg->vol[i]>=cfg->medianum)
+         if(cfg->vol[i]>=medianum)
             MCX_ERROR(-6,"medium index exceeds the specified medium types");
      }
      if(!isbuf && (cfg->mediabyte<4 || cfg->mediabyte==MEDIA_AS_F2H))
