@@ -11,9 +11,17 @@ project(mcx)
 find_package(ZLIB REQUIRED)
 find_package(CUDA QUIET REQUIRED)
 
+find_package(OpenMP REQUIRED)
+
 add_subdirectory(zmat)
 
 option(BUILD_MEX "Build mex" ON)
+
+if(BUILD_PYTHON)
+    add_subdirectory(pybind11)
+    find_package(PythonLibs REQUIRED)
+    include_directories(${PYTHON_INCLUDE_DIRS})
+endif()
 
 if(BUILD_MEX)
     find_package(Matlab)
@@ -52,8 +60,8 @@ cuda_add_library(mcx STATIC
     mcx_bench.h
     mcx_mie.cpp
     mcx_mie.h
-    tictoc.c
-    tictoc.h
+    mcx_tictoc.c
+    mcx_tictoc.h
     cjson/cJSON.c
     cjson/cJSON.h
     ubj/ubj.h
@@ -63,7 +71,7 @@ cuda_add_library(mcx STATIC
 # Add all project units
 cuda_add_executable(
     mcx-exe
-    mcextreme.c
+    mcx.c
     )
 
 set_target_properties(mcx-exe
@@ -77,6 +85,37 @@ target_link_libraries(
     zmat
     ZLIB::ZLIB
     )
+
+if (BUILD_PYTHON)
+    cuda_add_library(pymcx MODULE
+            mcx_core.cu
+            mcx_core.h
+            mcx_utils.c
+            mcx_utils.h
+            mcx_shapes.c
+            mcx_shapes.h
+            mcx_bench.c
+            mcx_bench.h
+            mcx_mie.cpp
+            mcx_mie.h
+            mcx_tictoc.c
+            mcx_tictoc.h
+            cjson/cJSON.c
+            cjson/cJSON.h
+            ubj/ubj.h
+            ubj/ubjw.c
+            pymcx.cpp
+            )
+    target_compile_definitions(pymcx PUBLIC MCX_CONTAINER)
+
+    target_link_libraries(pymcx OpenMP::OpenMP_CXX zmat ZLIB::ZLIB pybind11::module pybind11::lto pybind11::windows_extras)
+
+    pybind11_extension(pymcx)
+    pybind11_strip(pymcx)
+
+    set_target_properties(pymcx PROPERTIES CXX_VISIBILITY_PRESET "hidden"
+            CUDA_VISIBILITY_PRESET "hidden")
+endif()
 
 # Build mex file
 if(BUILD_MEX AND Matlab_FOUND)
