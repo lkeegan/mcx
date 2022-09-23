@@ -1350,11 +1350,12 @@ __device__ inline int launchnewphoton(MCXpos* p, MCXdir* v, Stokes* s, MCXtime* 
                                            p->w);
 
                     if (gcfg->srctype == MCX_SRC_LINE) {
-                        float s, q;
-                        r = 1.f - 2.f * rand_uniform01(t);
-                        s = 1.f - 2.f * rand_uniform01(t);
-                        q = sqrtf(1.f - v->x * v->x - v->y * v->y) * (rand_uniform01(t) > 0.5f ? 1.f : -1.f);
-                        *((float4*)v) = float4(v->y * q - v->z * s, v->z * r - v->x * q, v->x * s - v->y * r, v->nscat);
+                        float sphi, cphi;
+                        r = rsqrtf(gcfg->srcparam1.x * gcfg->srcparam1.x + gcfg->srcparam1.y * gcfg->srcparam1.y + gcfg->srcparam1.z * gcfg->srcparam1.z);
+                        *((float4*)v) = float4(gcfg->srcparam1.x * r, gcfg->srcparam1.y * r, gcfg->srcparam1.z * r, v->nscat);
+                        r = TWO_PI * rand_uniform01(t); // phi
+                        sincosf(r, &sphi, &cphi); // y=sin(phi), x=cos(phi)
+                        rotatevector(v, 1.f, 0.f, sphi, cphi);
                     }
 
                     *rv = float3(rv->x + (gcfg->srcparam1.x) * 0.5f,
@@ -1498,6 +1499,13 @@ __device__ inline int launchnewphoton(MCXpos* p, MCXdir* v, Stokes* s, MCXtime* 
                     sincosf(ang, &sphi, &cphi);
                     ang = acosf(2.f * rand_uniform01(t) - 1.f); //sine distribution
                     sincosf(ang, &stheta, &ctheta);
+                    rotatevector(v, stheta, ctheta, sphi, cphi);
+                } else if (gcfg->c0.w < 0.f && isinf(gcfg->c0.w)) { // lambertian (cosine distribution) if focal length is -inf
+                    float ang, stheta, ctheta, sphi, cphi;
+                    ang = TWO_PI * rand_uniform01(t); //next arimuth angle
+                    sincosf(ang, &sphi, &cphi);
+                    stheta = sqrtf(rand_uniform01(t));
+                    ctheta = sqrtf(1.f - stheta * stheta);
                     rotatevector(v, stheta, ctheta, sphi, cphi);
                 } else if (gcfg->c0.w != 0.f) {
                     float Rn2 = (gcfg->c0.w > 0.f) - (gcfg->c0.w < 0.f);
@@ -1937,7 +1945,7 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
         slen = fmin(slen, f.pscat);
 
         /** final length that the photon moves - either the length to move to the next voxel, or the remaining scattering length */
-        len = slen / (prop.mus * (v.nscat + 1.f > gcfg->gscatter ? (1.f - prop.g) : 1.f));
+        len = slen / (fmax(prop.mus, EPS) * (v.nscat + 1.f > gcfg->gscatter ? (1.f - prop.g) : 1.f));
 
         /** perform ray-interface intersection test to consider intra-voxel curvature (SVMC mode) */
         if (issvmc) {
@@ -2051,7 +2059,7 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
 
                 GPUDEBUG(("deposit to [%d] %e, w=%f\n", idx1dold, weight, p.w));
 
-                if (weight > 0.f) {
+                if (weight > 0.f || gcfg->outputtype == otRF) {
 #ifdef USE_ATOMIC
 
                     if (!gcfg->isatomic) {
