@@ -5,7 +5,7 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %% load mcx input and output file
-data=loadjson("onelayer_detp.jdat");
+data=loadmch("onelayer.mch");
 cfg=loadjson("onelayer.json");
 
 %% compute total reflectance

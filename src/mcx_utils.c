@@ -163,9 +163,6 @@ const char saveflag[] = {'D', 'S', 'P', 'M', 'X', 'V', 'W', 'I', '\0'};
  * nii: output fluence in nii format
  * hdr: output volume in Analyze hdr/img format
  * ubj: output volume in unversal binary json format (not implemented)
- * tx3: a simple 3D texture format
- * jnii: NeuroJSON JNIfTI format (JSON compatible)
- * bnii: NeuroJSON binary JNIfTI format (binary JSON format BJData compatible)
  */
 
 const char* outputformat[] = {"mc2", "nii", "hdr", "ubj", "tx3", "jnii", "bnii", ""};
@@ -314,7 +311,7 @@ void mcx_initcfg(Config* cfg) {
     cfg->replaydet = 0;
     cfg->seedfile[0] = '\0';
     cfg->outputtype = otFlux;
-    cfg->outputformat = ofJNifti;
+    cfg->outputformat = ofMC2;
     cfg->detectedcount = 0;
     cfg->runtime = 0;
     cfg->faststep = 0;
@@ -2765,7 +2762,7 @@ int mcx_loadjson(cJSON* root, Config* cfg) {
         }
 
         if (!cfg->outputformat) {
-            cfg->outputformat = mcx_keylookup((char*)FIND_JSON_KEY("OutputFormat", "Session.OutputFormat", Session, "jnii", valuestring), outputformat);
+            cfg->outputformat = mcx_keylookup((char*)FIND_JSON_KEY("OutputFormat", "Session.OutputFormat", Session, "mc2", valuestring), outputformat);
         }
 
         if (cfg->outputformat < 0) {
@@ -5137,7 +5134,7 @@ where possible parameters include (the first value in [*|*] is the default)\n\
  -M [0|1]      (--dumpmask)    1 to dump detector volume masks; 0 do not save\n\
  -H [1000000] (--maxdetphoton) max number of detected photons\n\
  -S [1|0]      (--save2pt)     1 to save the flux field; 0 do not save\n\
- -F [jnii|...](--outputformat) fluence data output format:\n\
+ -F [mc2|...] (--outputformat) fluence data output format:\n\
                                mc2 - MCX mc2 format (binary 32bit float)\n\
                                jnii - JNIfTI format (https://neurojson.org)\n\
                                bnii - Binary JNIfTI (https://neurojson.org)\n\

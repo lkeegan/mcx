@@ -15,7 +15,7 @@
 		"DoSpecular":	false,
 		"DebugFlag":	4,
 		"SaveDataMask":	0,
-		"OutputFormat":	"jnii",
+		"OutputFormat":	"mc2",
 		"OutputType":	"x"
 	},
 	"Forward":	{
