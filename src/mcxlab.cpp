@@ -2,7 +2,7 @@
 **  \mainpage Monte Carlo eXtreme - GPU accelerated Monte Carlo Photon Migration
 **
 **  \author Qianqian Fang <q.fang at neu.edu>
-**  \copyright Qianqian Fang, 2009-2022
+**  \copyright Qianqian Fang, 2009-2023
 **
 **  \section sref Reference:
 **  \li \c (\b Fang2009) Qianqian Fang and David A. Boas,
@@ -154,6 +154,11 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
 
             mcx_cleargpuinfo(&gpuinfo);
             mcx_clearcfg(&cfg);
+        } else if (strcmp(shortcmd, "version") == 0) {
+            mcx_initcfg(&cfg);
+            mcx_printheader(&cfg);
+            mcx_clearcfg(&cfg);
+            plhs[0] = mxCreateString(MCX_VERSION);
         }
 
         return;
@@ -177,7 +182,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
     /**
      * The function can return 1-5 outputs (i.e. the LHS)
      */
-    if (nlhs >= 1) {
+    if (nlhs >= 1 || (cfg.debuglevel & MCX_DEBUG_MOVE_ONLY)) {
         plhs[0] = mxCreateStructMatrix(ncfg, 1, 4, datastruct);
     }
 
@@ -227,7 +232,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
                 cfg.issave2pt = 0;    /** issave2pt defualt is 1, but allow users to manually disable, auto disable only if there is no output */
             }
 
-            cfg.issavedet = (nlhs >= 2); /** save detected photon data to the 2nd output if present */
+            cfg.issavedet = (nlhs >= 2 && cfg.issavedet == 0) ? 1 : ((nlhs < 2) ? 0 : cfg.issavedet); /** save detected photon data to the 2nd output if present */
             cfg.issaveseed = (nlhs >= 4); /** save detected photon seeds to the 4th output if present */
 
             /** Validate all input fields, and warn incompatible inputs */
@@ -269,7 +274,7 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
                 cfg.seeddata = malloc(cfg.maxdetphoton * sizeof(float) * RAND_WORD_LEN);
             }
 
-            if (nlhs >= 5) {
+            if (nlhs >= 5 || (cfg.debuglevel & MCX_DEBUG_MOVE_ONLY)) {
                 cfg.exportdebugdata = (float*)malloc(cfg.maxjumpdebug * sizeof(float) * MCX_DEBUG_REC_LEN);
                 cfg.debuglevel |= MCX_DEBUG_MOVE;
             }
@@ -311,15 +316,16 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
             fielddim[5] = 1;
 
             /** if 5th output presents, output the photon trajectory data */
-            if (nlhs >= 5) {
+            if (nlhs >= 5 || (cfg.debuglevel & MCX_DEBUG_MOVE_ONLY)) {
+                int outputidx = (cfg.debuglevel & MCX_DEBUG_MOVE_ONLY) ? 0 : 4;
                 fielddim[0] = MCX_DEBUG_REC_LEN;
                 fielddim[1] = cfg.debugdatalen; // his.savedphoton is for one repetition, should correct
                 fielddim[2] = 0;
                 fielddim[3] = 0;
-                mxSetFieldByNumber(plhs[4], jstruct, 0, mxCreateNumericArray(2, fielddim, mxSINGLE_CLASS, mxREAL));
+                mxSetFieldByNumber(plhs[outputidx], jstruct, 0, mxCreateNumericArray(2, fielddim, mxSINGLE_CLASS, mxREAL));
 
-                if (cfg.debuglevel & MCX_DEBUG_MOVE) {
-                    memcpy((float*)mxGetPr(mxGetFieldByNumber(plhs[4], jstruct, 0)), cfg.exportdebugdata, fielddim[0]*fielddim[1]*sizeof(float));
+                if (cfg.debuglevel & (MCX_DEBUG_MOVE | MCX_DEBUG_MOVE_ONLY)) {
+                    memcpy((float*)mxGetPr(mxGetFieldByNumber(plhs[outputidx], jstruct, 0)), cfg.exportdebugdata, fielddim[0]*fielddim[1]*sizeof(float));
                 }
 
                 if (cfg.exportdebugdata) {
@@ -391,15 +397,23 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
                 fieldlen = fielddim[0] * fielddim[1] * fielddim[2] * fielddim[3] * fielddim[4] * fielddim[5];
 
                 if (cfg.issaveref) {
+                    int highdim = fielddim[3] * fielddim[4] * fielddim[5];
+                    int voxellen = cfg.dim.x * cfg.dim.y * cfg.dim.z;
                     float* dref = (float*)malloc(fieldlen * sizeof(float));
                     memcpy(dref, cfg.exportfield, fieldlen * sizeof(float));
 
-                    for (int i = 0; i < fieldlen; i++) {
-                        if (dref[i] < 0.f) {
-                            dref[i] = -dref[i];
-                            cfg.exportfield[i] = 0.f;
+                    for (int voxelid = 0; voxelid < voxellen; voxelid++) {
+                        if (cfg.vol[voxelid]) {
+                            for (int gate = 0; gate < highdim; gate++)
+                                for (int srcid = 0; srcid < cfg.srcnum; srcid++) {
+                                    dref[(gate * voxellen + voxelid) * cfg.srcnum + srcid] = 0.f;
+                                }
                         } else {
-                            dref[i] = 0.f;
+                            for (int gate = 0; gate < highdim; gate++)
+                                for (int srcid = 0; srcid < cfg.srcnum; srcid++) {
+                                    dref[(gate * voxellen + voxelid) * cfg.srcnum + srcid] = -dref[(gate * voxellen + voxelid) * cfg.srcnum + srcid];
+                                    cfg.exportfield[(gate * voxellen + voxelid) * cfg.srcnum + srcid] = 0.f;
+                                }
                         }
                     }
 
@@ -467,7 +481,8 @@ void mexFunction(int nlhs, mxArray* plhs[], int nrhs, const mxArray* prhs[]) {
                         cfg.prop[i + 1].mus /= cfg.unitinmm;
                     }
 
-                    dimtype propdim[2] = {4, cfg.medianum};
+                    dimtype propdim[2] = {4, 0};
+                    propdim[1] = (dimtype)cfg.medianum;
                     mxSetFieldByNumber(plhs[0], jstruct, 3, mxCreateNumericArray(2, propdim, mxSINGLE_CLASS, mxREAL));
                     memcpy((float*)mxGetPr(mxGetFieldByNumber(plhs[0], jstruct, 3)), cfg.prop, cfg.medianum * 4 * sizeof(float));
                 }
@@ -535,6 +550,7 @@ void mcx_set_field(const mxArray* root, const mxArray* item, int idx, Config* cf
     GET_ONE_FIELD(cfg, unitinmm)
     GET_ONE_FIELD(cfg, printnum)
     GET_ONE_FIELD(cfg, voidtime)
+    GET_ONE_FIELD(cfg, issavedet)
     GET_ONE_FIELD(cfg, issaveseed)
     GET_ONE_FIELD(cfg, issaveref)
     GET_ONE_FIELD(cfg, issaveexit)
@@ -549,7 +565,7 @@ void mcx_set_field(const mxArray* root, const mxArray* item, int idx, Config* cf
     GET_ONE_FIELD(cfg, omega)
     GET_ONE_FIELD(cfg, issave2pt)
     GET_ONE_FIELD(cfg, lambda)
-    GET_VEC3_FIELD(cfg, srcpos)
+    GET_VEC34_FIELD(cfg, srcpos)
     GET_VEC34_FIELD(cfg, srcdir)
     GET_VEC3_FIELD(cfg, steps)
     GET_VEC3_FIELD(cfg, crop0)
@@ -655,7 +671,7 @@ void mcx_set_field(const mxArray* root, const mxArray* item, int idx, Config* cf
                         f2i.f = EPS;
                     }
 
-                    if (val[i] != val[i]) { /*if input is nan in continuous medium, convert to 0-voxel*/
+                    if (val[i] != val[i] || f2i.i == SIGN_BIT) { /*if input is nan in continuous medium, convert to 0-voxel*/
                         f2i.i = 0;
                     }
 
@@ -718,6 +734,10 @@ void mcx_set_field(const mxArray* root, const mxArray* item, int idx, Config* cf
 
                     if (f2h.i[0] == 0) { /*avoid being detected as a 0-label voxel, setting mus=EPS_fp16*/
                         f2h.i[0] = 0x00010000;
+                    }
+
+                    if (f2h.i[0] == SIGN_BIT) { /*avoid being detected as a 0-label voxel, setting mus=EPS_fp16*/
+                        f2h.i[0] = 0;
                     }
 
                     cfg->vol[i] = f2h.i[0];
@@ -899,7 +919,7 @@ void mcx_set_field(const mxArray* root, const mxArray* item, int idx, Config* cf
         printf("mcx.srctype='%s';\n", strtypestr);
     } else if (strcmp(name, "outputtype") == 0) {
         int len = mxGetNumberOfElements(item);
-        const char* outputtype[] = {"flux", "fluence", "energy", "jacobian", "nscat", "wl", "wp", "wm", "rf", ""};
+        const char* outputtype[] = {"flux", "fluence", "energy", "jacobian", "nscat", "wl", "wp", "wm", "rf", "length", ""};
         char outputstr[MAX_SESSION_LENGTH] = {'\0'};
 
         if (!mxIsChar(item) || len == 0) {
@@ -929,7 +949,7 @@ void mcx_set_field(const mxArray* root, const mxArray* item, int idx, Config* cf
         printf("mcx.outputtype='%s';\n", outputstr);
     } else if (strcmp(name, "debuglevel") == 0) {
         int len = mxGetNumberOfElements(item);
-        const char debugflag[] = {'R', 'M', 'P', '\0'};
+        const char debugflag[] = {'R', 'M', 'P', 'T', '\0'};
         char debuglevel[MAX_SESSION_LENGTH] = {'\0'};
 
         if (!mxIsChar(item) || len == 0) {
@@ -1184,8 +1204,9 @@ void mcx_replay_prep(Config* cfg) {
             cfg->replay.detid[cfg->nphoton] = (hasdetid) ? (int)(detps[i * dimdetps[0]]) : 1;
 
             for (j = hasdetid; j < cfg->medianum - 1 + hasdetid; j++) {
-                plen = detps[i * dimdetps[0] + offset + j] * cfg->unitinmm;
+                plen = detps[i * dimdetps[0] + offset + j];
                 cfg->replay.weight[cfg->nphoton] *= expf(-cfg->prop[j - hasdetid + 1].mua * plen);
+                plen *= cfg->unitinmm;
                 cfg->replay.tof[cfg->nphoton] += plen * R_C0 * cfg->prop[j - hasdetid + 1].n;
             }
 
@@ -1334,7 +1355,7 @@ extern "C" int mcx_throw_exception(const int id, const char* msg, const char* fi
  */
 
 void mcxlab_usage() {
-    printf("MCXLAB v2021.2\nUsage:\n    [flux,detphoton,vol,seeds]=mcxlab(cfg);\n\nPlease run 'help mcxlab' for more details.\n");
+    printf("MCXLAB (" MCX_VERSION ")\nUsage:\n    [flux,detphoton,vol,seeds,traj]=mcxlab(cfg);\n\nPlease run 'help mcxlab' for more details.\n");
 }
 
 /**

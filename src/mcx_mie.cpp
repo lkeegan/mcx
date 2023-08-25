@@ -2,7 +2,7 @@
 **  \mainpage Monte Carlo eXtreme - GPU accelerated Monte Carlo Photon Migration
 **
 **  \author Qianqian Fang <q.fang at neu.edu>
-**  \copyright Qianqian Fang, 2009-2022
+**  \copyright Qianqian Fang, 2009-2023
 **
 **  \section sref Reference:
 **  \li \c (\b Fang2009) Qianqian Fang and David A. Boas,
@@ -36,7 +36,7 @@
 
 #include <vector_types.h>
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__APPLE__)
     #include <complex>
     typedef std::complex<double> Dcomplex;
 #else
@@ -44,7 +44,7 @@
     typedef double _Complex Dcomplex;
 #endif
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) || defined(__APPLE__)
 inline Dcomplex make_Dcomplex(double re, double im) {
     return Dcomplex(re, im);
 }

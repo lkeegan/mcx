@@ -23,7 +23,7 @@
 *******************************************************************************/
 
 /***************************************************************************//**
-\file    pymcx.cpp
+\file    pmcx.cpp
 
 @brief   Python interface using Pybind11 for MCX
 *******************************************************************************/
@@ -105,7 +105,7 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
     unsigned int dim_xyz = 0;
 
     // Data type-specific logic
-    if (py::array_t<int8_t, py::array::c_style>::check_(volume_handle)) {
+    if (py::array_t<int8_t>::check_(volume_handle)) {
         auto f_style_volume = py::array_t<int8_t, py::array::f_style>::ensure(volume_handle);
         auto buffer = f_style_volume.request();
         int i = buffer.shape.size() == 4;
@@ -138,7 +138,7 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
                 mcx_config.vol[i] = static_cast<unsigned char*>(buffer.ptr)[i];
             }
         }
-    } else if (py::array_t<int16_t, py::array::c_style>::check_(volume_handle)) {
+    } else if (py::array_t<int16_t>::check_(volume_handle)) {
         auto f_style_volume = py::array_t<int16_t, py::array::f_style>::ensure(volume_handle);
         auto buffer = f_style_volume.request();
         int i = buffer.shape.size() == 4;
@@ -177,7 +177,7 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
                 mcx_config.vol[i] = static_cast<unsigned short*>(buffer.ptr)[i];
             }
         }
-    } else if (py::array_t<int32_t, py::array::c_style>::check_(volume_handle)) {
+    } else if (py::array_t<int32_t>::check_(volume_handle)) {
         auto f_style_volume = py::array_t<int32_t, py::array::f_style>::ensure(volume_handle);
         mcx_config.mediabyte = 4;
         auto buffer = f_style_volume.request();
@@ -193,8 +193,8 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
         dim_xyz = mcx_config.dim.x * mcx_config.dim.y * mcx_config.dim.z;
         mcx_config.vol = static_cast<unsigned int*>(malloc(dim_xyz * sizeof(unsigned int)));
         memcpy(mcx_config.vol, buffer.ptr, buffer.size * sizeof(unsigned int));
-    } else if (py::array_t<u_int8_t, py::array::c_style>::check_(volume_handle)) {
-        auto f_style_volume = py::array_t<u_int8_t, py::array::f_style>::ensure(volume_handle);
+    } else if (py::array_t<uint8_t>::check_(volume_handle)) {
+        auto f_style_volume = py::array_t<uint8_t, py::array::f_style>::ensure(volume_handle);
         mcx_config.mediabyte = 1;
         auto buffer = f_style_volume.request();
 
@@ -212,13 +212,13 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
         for (int i = 0; i < buffer.size; i++) {
             mcx_config.vol[i] = static_cast<unsigned char*>(buffer.ptr)[i];
         }
-    } else if (py::array_t<u_int16_t, py::array::c_style>::check_(volume_handle)) {
-        auto f_style_volume = py::array_t<u_int16_t, py::array::f_style>::ensure(volume_handle);
+    } else if (py::array_t<uint16_t>::check_(volume_handle)) {
+        auto f_style_volume = py::array_t<uint16_t, py::array::f_style>::ensure(volume_handle);
         mcx_config.mediabyte = 2;
         auto buffer = f_style_volume.request();
 
         if (buffer.shape.size() == 4) {
-            throw py::value_error("Invalid volume dims for u_int16_t volume.");
+            throw py::value_error("Invalid volume dims for uint16_t volume.");
         }
 
         mcx_config.dim = {static_cast<unsigned int>(buffer.shape.at(0)),
@@ -231,13 +231,13 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
         for (int i = 0; i < buffer.size; i++) {
             mcx_config.vol[i] = static_cast<unsigned short*>(buffer.ptr)[i];
         }
-    } else if (py::array_t<u_int32_t, py::array::c_style>::check_(volume_handle)) {
-        auto f_style_volume = py::array_t<u_int32_t, py::array::f_style>::ensure(volume_handle);
+    } else if (py::array_t<uint32_t>::check_(volume_handle)) {
+        auto f_style_volume = py::array_t<uint32_t, py::array::f_style>::ensure(volume_handle);
         mcx_config.mediabyte = 8;
         auto buffer = f_style_volume.request();
 
         if (buffer.shape.size() == 4) {
-            throw py::value_error("Invalid volume dims for u_int32_t volume.");
+            throw py::value_error("Invalid volume dims for uint32_t volume.");
         }
 
         mcx_config.dim = {static_cast<unsigned int>(buffer.shape.at(0)),
@@ -247,7 +247,7 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
         dim_xyz = mcx_config.dim.x * mcx_config.dim.y * mcx_config.dim.z;
         mcx_config.vol = static_cast<unsigned int*>(malloc(dim_xyz * sizeof(unsigned int)));
         memcpy(mcx_config.vol, buffer.ptr, buffer.size * sizeof(unsigned int));
-    } else if (py::array_t<float, py::array::c_style>::check_(volume_handle)) {
+    } else if (py::array_t<float>::check_(volume_handle)) {
         auto f_style_volume = py::array_t<float, py::array::f_style>::ensure(volume_handle);
         auto buffer = f_style_volume.request();
         int i = buffer.shape.size() == 4;
@@ -397,7 +397,7 @@ void parseVolume(const py::dict& user_cfg, Config& mcx_config) {
                 mcx_config.vol[i] = static_cast<float*>(buffer.ptr)[i];
             }
         }
-    } else if (py::array_t<double, py::array::c_style>::check_(volume_handle)) {
+    } else if (py::array_t<double>::check_(volume_handle)) {
         auto f_style_volume = py::array_t<double, py::array::f_style>::ensure(volume_handle);
         mcx_config.mediabyte = 4;
         auto buffer = f_style_volume.request();
@@ -458,7 +458,7 @@ void parse_config(const py::dict& user_cfg, Config& mcx_config) {
     GET_SCALAR_FIELD(user_cfg, mcx_config, srcnum, py::int_);
     GET_SCALAR_FIELD(user_cfg, mcx_config, omega, py::float_);
     GET_SCALAR_FIELD(user_cfg, mcx_config, lambda, py::float_);
-    GET_VEC3_FIELD(user_cfg, mcx_config, srcpos, float);
+    GET_VEC34_FIELD(user_cfg, mcx_config, srcpos, float);
     GET_VEC34_FIELD(user_cfg, mcx_config, srcdir, float);
     GET_VEC3_FIELD(user_cfg, mcx_config, steps, float);
     GET_VEC3_FIELD(user_cfg, mcx_config, crop0, uint);
@@ -477,11 +477,11 @@ void parse_config(const py::dict& user_cfg, Config& mcx_config) {
 
         auto buffer_info = f_style_volume.request();
 
-        if (buffer_info.shape.at(0) > 0 && buffer_info.shape.at(1) != 4) {
+        if ((buffer_info.shape.size() > 1 && buffer_info.shape.at(0) > 0 && buffer_info.shape.at(1) != 4) || (buffer_info.shape.size() == 1 && buffer_info.shape.at(0) != 4)) {
             throw py::value_error("the 'detpos' field must have 4 columns (x,y,z,radius)");
         }
 
-        mcx_config.detnum = buffer_info.shape.at(0);
+        mcx_config.detnum = (buffer_info.shape.size() == 1) ? 1 : buffer_info.shape.at(0);
 
         if (mcx_config.detpos) {
             free(mcx_config.detpos);
@@ -505,11 +505,11 @@ void parse_config(const py::dict& user_cfg, Config& mcx_config) {
 
         auto buffer_info = f_style_volume.request();
 
-        if (buffer_info.shape.at(0) > 0 && buffer_info.shape.at(1) != 4) {
+        if ((buffer_info.shape.size() > 1 && buffer_info.shape.at(0) > 0 && buffer_info.shape.at(1) != 4) || buffer_info.shape.size() == 1 && buffer_info.shape.at(0) != 4) {
             throw py::value_error("the 'prop' field must have 4 columns (mua,mus,g,n)");
         }
 
-        mcx_config.medianum = buffer_info.shape.at(0);
+        mcx_config.medianum = (buffer_info.shape.size() == 1) ? 1 : buffer_info.shape.at(0);
 
         if (mcx_config.prop) {
             free(mcx_config.prop);
@@ -537,11 +537,11 @@ void parse_config(const py::dict& user_cfg, Config& mcx_config) {
             throw py::value_error("the 'polprop' field must a 2D array");
         }
 
-        if (buffer_info.shape.at(0) > 0 && buffer_info.shape.at(1) != 5) {
+        if ((buffer_info.shape.size() > 1 && buffer_info.shape.at(0) > 0 && buffer_info.shape.at(1) != 5) || buffer_info.shape.size() == 1 && buffer_info.shape.at(0) != 5) {
             throw py::value_error("the 'polprop' field must have 5 columns (mua, radius, rho, n_sph,n_bkg)");
         }
 
-        mcx_config.polmedianum = buffer_info.shape.at(0);
+        mcx_config.polmedianum = (buffer_info.shape.size() == 1) ? 1 : buffer_info.shape.at(0);
 
         if (mcx_config.polprop) {
             free(mcx_config.polprop);
@@ -727,6 +727,20 @@ void parse_config(const py::dict& user_cfg, Config& mcx_config) {
         mcx_config.bc[bc_string.size()] = '\0';
     }
 
+    if (user_cfg.contains("detphotons")) {
+        auto detphotons = py::array_t < float, py::array::f_style | py::array::forcecast >::ensure(user_cfg["detphotons"]);
+
+        if (!detphotons) {
+            throw py::value_error("Invalid detphotons field value");
+        }
+
+        auto buffer_info = detphotons.request();
+
+        det_ps = static_cast<float*>(buffer_info.ptr);
+        dim_det_ps[0] = buffer_info.shape.at(0);
+        dim_det_ps[1] = buffer_info.shape.at(1);
+    }
+
     if (user_cfg.contains("seed")) {
         auto seed_value = user_cfg["seed"];
 
@@ -820,22 +834,18 @@ void parse_config(const py::dict& user_cfg, Config& mcx_config) {
 }
 
 /**
- * Function that's called to cleanup any memory/configs allocated by PyMCX. It is used in both normal and exceptional
+ * Function that's called to cleanup any memory/configs allocated by PMCX. It is used in both normal and exceptional
  * termination of the application
  * @param gpu_info reference to an array of MCXGPUInfo data structure
  * @param mcx_config reference to MCXConfig data structure
  */
 inline void cleanup_configs(MCXGPUInfo*& gpu_info, MCXConfig& mcx_config) {
-    if (det_ps) {
-        free(det_ps);
-    }
-
     mcx_cleargpuinfo(&gpu_info);
     mcx_clearcfg(&mcx_config);
 }
 
 
-py::dict py_mcx_interface(const py::dict& user_cfg) {
+py::dict pmcx_interface(const py::dict& user_cfg) {
     unsigned int partial_data, hostdetreclen;
     Config mcx_config;  /* mcx_config: structure to store all simulation parameters */
     GPUInfo* gpu_info = nullptr;        /** gpuInfo: structure to store GPU information */
@@ -850,14 +860,14 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
         /*
          * To start an MCX simulation, we first create a simulation configuration and set all elements to its default settings.
          */
+        det_ps = nullptr;
+
         parse_config(user_cfg, mcx_config);
 
         /** The next step, we identify gpu number and query all GPU info */
         if (!(active_dev = mcx_list_gpu(&mcx_config, &gpu_info))) {
             mcx_error(-1, "No GPU device found\n", __FILE__, __LINE__);
         }
-
-        det_ps = nullptr;
 
         mcx_flush(&mcx_config);
 
@@ -900,9 +910,8 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             mcx_config.seeddata = malloc(mcx_config.maxdetphoton * sizeof(float) * RAND_WORD_LEN);
         }
 
-        if (mcx_config.debuglevel != 0) {
+        if (mcx_config.debuglevel & (MCX_DEBUG_MOVE | MCX_DEBUG_MOVE_ONLY)) {
             mcx_config.exportdebugdata = (float*) malloc(mcx_config.maxjumpdebug * sizeof(float) * MCX_DEBUG_REC_LEN);
-            mcx_config.debuglevel |= MCX_DEBUG_MOVE;
         }
 
         /** Start multiple threads, one thread to run portion of the simulation on one CUDA GPU, all in parallel */
@@ -932,20 +941,20 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
 
         /** If error is detected, gracefully terminate the mex and return back to Python */
         if (!exception_msgs.empty()) {
-            throw py::runtime_error("MCX Terminated due to an exception!");
+            throw py::runtime_error("PMCX terminated due to an exception!");
         }
 
         field_dim[4] = 1;
         field_dim[5] = 1;
 
-        if (mcx_config.debuglevel != 0) {
+        if (mcx_config.debuglevel & (MCX_DEBUG_MOVE | MCX_DEBUG_MOVE_ONLY)) {
             field_dim[0] = MCX_DEBUG_REC_LEN;
             field_dim[1] = mcx_config.debugdatalen; // his.savedphoton is for one repetition, should correct
             field_dim[2] = 0;
             field_dim[3] = 0;
             auto photon_traj_data = py::array_t<float, py::array::f_style>({field_dim[0], field_dim[1]});
 
-            if (mcx_config.debuglevel & MCX_DEBUG_MOVE) {
+            if (mcx_config.debuglevel & (MCX_DEBUG_MOVE | MCX_DEBUG_MOVE_ONLY)) {
                 memcpy(photon_traj_data.mutable_data(), mcx_config.exportdebugdata, field_dim[0] * field_dim[1] * sizeof(float));
             }
 
@@ -954,7 +963,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             }
 
             mcx_config.exportdebugdata = nullptr;
-            output["photontraj"] = photon_traj_data;
+            output["traj"] = photon_traj_data;
         }
 
         if (mcx_config.issaveseed == 1) {
@@ -966,7 +975,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             memcpy(detected_seeds.mutable_data(), mcx_config.seeddata, field_dim[0] * field_dim[1]);
             free(mcx_config.seeddata);
             mcx_config.seeddata = nullptr;
-            output["detectedseeds"] = detected_seeds;
+            output["seeds"] = detected_seeds;
         }
 
         if (user_cfg.contains("dumpmask") && py::bool_(user_cfg["dumpmask"]).cast<bool>()) {
@@ -979,7 +988,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
                 auto detector_vol = py::array_t<uint32_t, py::array::f_style>({field_dim[0], field_dim[1], field_dim[2]});
                 memcpy(detector_vol.mutable_data(), mcx_config.vol,
                        field_dim[0] * field_dim[1] * field_dim[2] * sizeof(unsigned int));
-                output["detector"] = detector_vol;
+                output["vol"] = detector_vol;
             }
         }
 
@@ -990,10 +999,10 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             field_dim[3] = 0;
 
             if (mcx_config.detectedcount > 0) {
-                auto partial_path = py::array_t<float, py::array::f_style>({field_dim[0], mcx_config.detectedcount});
+                auto partial_path = py::array_t<float, py::array::f_style>(std::initializer_list<size_t>({field_dim[0], mcx_config.detectedcount}));
                 memcpy(partial_path.mutable_data(), mcx_config.exportdetected,
                        field_dim[0] * field_dim[1] * sizeof(float));
-                output["partialpath"] = partial_path;
+                output["detp"] = partial_path;
             }
 
             free(mcx_config.exportdetected);
@@ -1016,7 +1025,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             }
 
             field_len = field_dim[0] * field_dim[1] * field_dim[2] * field_dim[3] * field_dim[4] * field_dim[5];
-            py::detail::any_container<ssize_t> array_dims;
+            std::vector<size_t> array_dims;
 
             if (field_dim[5] > 1)
                 array_dims = {field_dim[0], field_dim[1], field_dim[2], field_dim[3], field_dim[4], field_dim[5]};
@@ -1028,15 +1037,23 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             auto dref_array = py::array_t<float, py::array::f_style>(array_dims);
 
             if (mcx_config.issaveref) {
+                int highdim = field_dim[3] * field_dim[4] * field_dim[5];
+                int voxellen = mcx_config.dim.x * mcx_config.dim.y * mcx_config.dim.z;
                 auto* dref = static_cast<float*>(dref_array.mutable_data());
                 memcpy(dref, mcx_config.exportfield, field_len * sizeof(float));
 
-                for (int i = 0; i < field_len; i++) {
-                    if (dref[i] < 0.f) {
-                        dref[i] = -dref[i];
-                        mcx_config.exportfield[i] = 0.f;
+                for (int voxelid = 0; voxelid < voxellen; voxelid++) {
+                    if (mcx_config.vol[voxelid]) {
+                        for (int gate = 0; gate < highdim; gate++)
+                            for (int srcid = 0; srcid < mcx_config.srcnum; srcid++) {
+                                dref[(gate * voxellen + voxelid) * mcx_config.srcnum + srcid] = 0.f;
+                            }
                     } else {
-                        dref[i] = 0.f;
+                        for (int gate = 0; gate < highdim; gate++)
+                            for (int srcid = 0; srcid < mcx_config.srcnum; srcid++) {
+                                dref[(gate * voxellen + voxelid) * mcx_config.srcnum + srcid] = -dref[(gate * voxellen + voxelid) * mcx_config.srcnum + srcid];
+                                mcx_config.exportfield[(gate * voxellen + voxelid) * mcx_config.srcnum + srcid] = 0.f;
+                            }
                     }
                 }
 
@@ -1045,7 +1062,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
 
             auto data = py::array_t<float, py::array::f_style>(array_dims);
             memcpy(data.mutable_data(), mcx_config.exportfield, field_len * sizeof(float));
-            output["data"] = data;
+            output["flux"] = data;
             free(mcx_config.exportfield);
             mcx_config.exportfield = nullptr;
             // Stat dictionary output
@@ -1055,7 +1072,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
             stat_dict["energytot"] = mcx_config.energytot;
             stat_dict["energyabs"] = mcx_config.energyabs;
             stat_dict["normalizer"] = mcx_config.normalizer;
-            stat_dict["unitinmm"] = mcx_config.normalizer;
+            stat_dict["unitinmm"] = mcx_config.unitinmm;
             py::list workload;
 
             for (int i = 0; i < active_dev; i++) {
@@ -1075,7 +1092,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
 
                 auto opt_properties = py::array_t<float, py::array::f_style>({4, int(mcx_config.medianum)});
                 memcpy(opt_properties.mutable_data(), mcx_config.prop, mcx_config.medianum * 4 * sizeof(float));
-                output["opticalprops"] = opt_properties;
+                output["prop"] = opt_properties;
             }
         }
     } catch (const char* err) {
@@ -1112,7 +1129,7 @@ py::dict py_mcx_interface(const py::dict& user_cfg) {
 
 
 /**
- * @brief Error reporting function in PyMCX, equivalent to mcx_error in binary mode
+ * @brief Error reporting function in PMCX, equivalent to mcx_error in binary mode
  *
  * @param[in] id: a single integer for the types of the error
  * @param[in] msg: the error message string
@@ -1127,16 +1144,32 @@ int mcx_throw_exception(const int id, const char* msg, const char* filename, con
 
 void print_mcx_usage() {
     std::cout
-            << "PyMCX v2022\nUsage:\n    output = pymcx.mcx(cfg);\n\nRun 'help(pymcx.mcx)' for more details.\n";
+            << "PMCX (" MCX_VERSION ")\nUsage:\n    output = pmcx.run(cfg);\n\nRun 'help(pmcx.run)' for more details.\n";
 }
 
-py::dict py_mcx_interface_wargs(py::args args, const py::kwargs& kwargs) {
+/**
+ * @brief Force matlab refresh the command window to print all buffered messages
+ */
+
+extern "C" void mcx_python_flush() {
+    std::cout.flush();
+}
+
+py::dict pmcx_interface_wargs(py::args args, const py::kwargs& kwargs) {
     if (py::len(kwargs) == 0) {
         print_mcx_usage();
         return {};
     }
 
-    return py_mcx_interface(kwargs);
+    return pmcx_interface(kwargs);
+}
+
+py::str print_version() {
+    Config mcx_config;            /** mcxconfig: structure to store all simulation parameters */
+    mcx_initcfg(&mcx_config);
+    mcx_printheader(&mcx_config);
+    mcx_clearcfg(&mcx_config);
+    return py::str(MCX_VERSION);
 }
 
 py::list get_GPU_info() {
@@ -1176,16 +1209,20 @@ py::list get_GPU_info() {
     return output;
 }
 
-PYBIND11_MODULE(pymcx, m) {
-    m.doc() = "PyMCX: Monte Carlo eXtreme Python Interface, http://mcx.space";
-    m.def("mcx", &py_mcx_interface, "Runs MCX with the given config.", py::call_guard<py::scoped_ostream_redirect,
+PYBIND11_MODULE(_pmcx, m) {
+    m.doc() = "PMCX (" MCX_VERSION "): Python bindings for Monte Carlo eXtreme photon transport simulator, http://mcx.space";
+    m.def("run", &pmcx_interface, "Runs MCX with the given config.", py::call_guard<py::scoped_ostream_redirect,
           py::scoped_estream_redirect>());
-    m.def("mcx", &py_mcx_interface_wargs, "Runs MCX with the given config.", py::call_guard<py::scoped_ostream_redirect,
+    m.def("run", &pmcx_interface_wargs, "Runs MCX with the given config.", py::call_guard<py::scoped_ostream_redirect,
           py::scoped_estream_redirect>());
     m.def("gpuinfo",
           &get_GPU_info,
           "Prints out the list of CUDA-capable devices attached to this system.",
           py::call_guard<py::scoped_ostream_redirect,
           py::scoped_estream_redirect>());
+    m.def("version",
+          &print_version,
+          "Prints mcx version information.",
+          py::call_guard<py::scoped_ostream_redirect,
+          py::scoped_estream_redirect>());
 }
-
