@@ -34,6 +34,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <errno.h>
+#include <time.h>
 
 #ifndef WIN32
     #include <sys/ioctl.h>
@@ -46,6 +47,10 @@
 #include "mcx_core.h"
 #include "mcx_bench.h"
 #include "mcx_mie.h"
+
+#if defined(_WIN32) && defined(USE_OS_TIMER) && !defined(MCX_CONTAINER)
+    #include "mmc_tictoc.h"
+#endif
 
 #ifndef MCX_CONTAINER
     #include "zmat/zmatlib.h"
@@ -163,6 +168,9 @@ const char saveflag[] = {'D', 'S', 'P', 'M', 'X', 'V', 'W', 'I', '\0'};
  * nii: output fluence in nii format
  * hdr: output volume in Analyze hdr/img format
  * ubj: output volume in unversal binary json format (not implemented)
+ * tx3: a simple 3D texture format
+ * jnii: NeuroJSON JNIfTI format (JSON compatible)
+ * bnii: NeuroJSON binary JNIfTI format (binary JSON format BJData compatible)
  */
 
 const char* outputformat[] = {"mc2", "nii", "hdr", "ubj", "tx3", "jnii", "bnii", ""};
@@ -193,7 +201,7 @@ const char boundarydetflag[] = {'0', '1', '\0'};
 
 const char* srctypeid[] = {"pencil", "isotropic", "cone", "gaussian", "planar",
                            "pattern", "fourier", "arcsine", "disk", "fourierx", "fourierx2d", "zgaussian",
-                           "line", "slit", "pencilarray", "pattern3d", "hyperboloid", "msot_acuity_echo",
+                           "line", "slit", "pencilarray", "pattern3d", "hyperboloid", "ring", "msot_acuity_echo",
                            "invision", ""
                           };
 
@@ -311,7 +319,7 @@ void mcx_initcfg(Config* cfg) {
     cfg->replaydet = 0;
     cfg->seedfile[0] = '\0';
     cfg->outputtype = otFlux;
-    cfg->outputformat = ofMC2;
+    cfg->outputformat = ofJNifti;
     cfg->detectedcount = 0;
     cfg->runtime = 0;
     cfg->faststep = 0;
@@ -2761,8 +2769,8 @@ int mcx_loadjson(cJSON* root, Config* cfg) {
             }
         }
 
-        if (!cfg->outputformat) {
-            cfg->outputformat = mcx_keylookup((char*)FIND_JSON_KEY("OutputFormat", "Session.OutputFormat", Session, "mc2", valuestring), outputformat);
+        if (cfg->outputformat == ofJNifti) {
+            cfg->outputformat = mcx_keylookup((char*)FIND_JSON_KEY("OutputFormat", "Session.OutputFormat", Session, "jnii", valuestring), outputformat);
         }
 
         if (cfg->outputformat < 0) {
@@ -3342,10 +3350,11 @@ void mcx_replayinit(Config* cfg, float* detps, int dimdetps[2], int seedbyte) {
 
     for (i = 0; i < dimdetps[1]; i++) {
         if (cfg->replaydet <= 0 || cfg->replaydet == (int) (detps[i * dimdetps[0]])) {
-            if (i != cfg->nphoton)
+            if (i != cfg->nphoton) {
                 memcpy((char*) (cfg->replay.seed) + cfg->nphoton * seedbyte,
                        (char*) (cfg->replay.seed) + i * seedbyte,
                        seedbyte);
+            }
 
             cfg->replay.weight[cfg->nphoton] = 1.f;
             cfg->replay.tof[cfg->nphoton] = 0.f;
@@ -3442,7 +3451,11 @@ void mcx_validatecfg(Config* cfg, float* detps, int dimdetps[2], int seedbyte) {
         cfg->srcpos.z--; /*convert to C index, grid center*/
     }
 
-    if (cfg->tstart > cfg->tend || cfg->tstep == 0.f) {
+    if (cfg->tstep == 0.f) {
+        cfg->tstep = cfg->tend;
+    }
+
+    if (cfg->tstart >= cfg->tend || cfg->tstep == 0.f) {
         MCX_ERROR(-6, "incorrect time gate settings");
     }
 
@@ -3452,10 +3465,6 @@ void mcx_validatecfg(Config* cfg, float* detps, int dimdetps[2], int seedbyte) {
 
     if (cfg->steps.x == 0.f || cfg->steps.y == 0.f || cfg->steps.z == 0.f) {
         MCX_ERROR(-6, "field 'steps' can not have zero elements");
-    }
-
-    if (cfg->tend <= cfg->tstart) {
-        MCX_ERROR(-6, "field 'tend' must be greater than field 'tstart'");
     }
 
     gates = (int) ((cfg->tend - cfg->tstart) / cfg->tstep + 0.5);
@@ -3486,6 +3495,10 @@ void mcx_validatecfg(Config* cfg, float* detps, int dimdetps[2], int seedbyte) {
             cfg->crop1.y--;
             cfg->crop1.z--;
         }
+    }
+
+    if (cfg->seed < 0 && cfg->seed != SEED_FROM_FILE) {
+        cfg->seed = time(NULL);
     }
 
     if ((cfg->outputtype == otJacobian || cfg->outputtype == otWP || cfg->outputtype == otDCS || cfg->outputtype == otRF)
@@ -3587,9 +3600,12 @@ void mcx_loadseedjdat(char* filename, Config* cfg) {
             uint dims[3] = {1, 1, 1};
             float* ppath = NULL;
             char* type;
-            History his;
+            History his = {{0}};
 
             cJSON* vsize = cJSON_GetObjectItem(seed, "_ArraySize_");
+
+            his.savedphoton = 0;
+            his.seedbyte = 0;
 
             if (vsize) {
                 cJSON* tmp = vsize->child;
@@ -4380,6 +4396,10 @@ void mcx_parsecmd(int argc, char* argv[], Config* cfg) {
     char logfile[MAX_PATH_LENGTH] = {0};
     float np = 0.f;
 
+#if defined(_WIN32) && defined(USE_OS_TIMER) && !defined(MCX_CONTAINER)
+    EnableVTMode();
+#endif
+
     if (argc <= 1) {
         mcx_usage(cfg, argv[0]);
         exit(0);
@@ -4981,18 +5001,18 @@ void mcx_printheader(Config* cfg) {
 ###############################################################################\n\
 #                      Monte Carlo eXtreme (MCX) -- CUDA                      #\n\
 #          Copyright (c) 2009-2023 Qianqian Fang <q.fang at neu.edu>          #\n\
-#                https://mcx.space/  &  https://neurojson.org/                #\n\
+#" S_BLUE "                https://mcx.space/  &  https://neurojson.org/                " S_MAGENTA "#\n\
 #                                                                             #\n\
-# Computational Optics & Translational Imaging (COTI) Lab- http://fanglab.org #\n\
+# Computational Optics & Translational Imaging (COTI) Lab- " S_BLUE "http://fanglab.org " S_MAGENTA "#\n\
 #   Department of Bioengineering, Northeastern University, Boston, MA, USA    #\n\
 ###############################################################################\n\
 #    The MCX Project is funded by the NIH/NIGMS under grant R01-GM114365      #\n\
 ###############################################################################\n\
 #  Open-source codes and reusable scientific data are essential for research, #\n\
 # MCX proudly developed human-readable JSON-based data formats for easy reuse,#\n\
-#  Please consider using JSON (https://neurojson.org/) for your research data #\n\
+#  Please consider using JSON (" S_BLUE "https://neurojson.org/" S_MAGENTA ") for your research data #\n\
 ###############################################################################\n\
-$Rev::      $ " MCX_VERSION "  $Date::                       $ by $Author::             $\n\
+$Rev::      $ " S_GREEN MCX_VERSION S_MAGENTA "  $Date::                       $ by $Author::             $\n\
 ###############################################################################\n" S_RESET);
 }
 
@@ -5134,7 +5154,7 @@ where possible parameters include (the first value in [*|*] is the default)\n\
  -M [0|1]      (--dumpmask)    1 to dump detector volume masks; 0 do not save\n\
  -H [1000000] (--maxdetphoton) max number of detected photons\n\
  -S [1|0]      (--save2pt)     1 to save the flux field; 0 do not save\n\
- -F [mc2|...] (--outputformat) fluence data output format:\n\
+ -F [jnii|...](--outputformat) fluence data output format:\n\
                                mc2 - MCX mc2 format (binary 32bit float)\n\
                                jnii - JNIfTI format (https://neurojson.org)\n\
                                bnii - Binary JNIfTI (https://neurojson.org)\n\

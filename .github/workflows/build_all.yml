@@ -42,20 +42,19 @@ jobs:
           echo "SDKROOT=$PWD/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk" >> $GITHUB_ENV
           brew install octave
           brew link --force libomp
+          brew install --cask lazarus
+          echo "/Applications/Lazarus/" >> $GITHUB_PATH
       - name: Install dependencies (Windows only)
         if: ${{ runner.os == 'Windows' }}
         run: |
-          curl --retry 3 -kL http://cdimage.debian.org/mirror/gnu.org/gnu/octave/windows/octave-5.2.0_1-w64-64.7z --output octave_5.2.7z
-          7z x octave_5.2.7z -ooctave -y
-          rm -rf octave_5.2.7z
-          #curl --retry 3 -kL https://mcx.space/dev/ci/lazarus-2.0.8-fpc-3.0.4-win32.exe --output lazarus_installer.exe
-          #chmod +x lazarus_installer.exe
-          #./lazarus_installer.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-
+          ## curl --retry 3 -kL http://cdimage.debian.org/mirror/gnu.org/gnu/octave/windows/octave-5.2.0_1-w64-64.7z --output octave_5.2.7z
+          ## 7z x octave_5.2.7z -ooctave -y
+          ## rm -rf octave_5.2.7z
           #choco install octave.portable --version=5.2.0
           choco install lazarus --version=2.0.6
           curl --retry 3 -kL https://github.com/upx/upx/releases/download/v4.0.2/upx-4.0.2-win64.zip --output upx.zip
           7z x upx.zip -oupx -y
-          echo "$PWD/octave/octave-5.2.0-w64-64/mingw64/bin" >> $GITHUB_PATH
+          ## echo "$PWD/octave/octave-5.2.0-w64-64/mingw64/bin" >> $GITHUB_PATH
           echo 'C:\lazarus' >> $GITHUB_PATH
           echo 'C:\ProgramData\Chocolatey\lib\mingw\tools\install\mingw64\bin\' >> $GITHUB_PATH
           echo 'C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\bin\' >> $GITHUB_PATH
@@ -150,7 +149,7 @@ jobs:
             make AR=g++ BACKEND=cudastatic USERLINKOPT='lib/libzmat.a -Wl,-Bstatic -lgomp -Wl,-Bdynamic'
             ldd ../bin/mcx
           elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            mkdir build && cd build && cmake .. && make && cd ..
+            mkdir build && cd build && cmake .. && make VERBOSE=1 && cd ..
             otool -L ../bin/mcx
             otool -L ../mcxlab/mcx.mex*
           else
@@ -158,7 +157,6 @@ jobs:
             objdump -p ../bin/mcx | grep "DLL Name:"
           fi
       - name: Build mcxstudio
-        if: ${{ runner.os != 'macOS' }}
         run: |
           cd mcxstudio
           lazbuild --build-mode=release mcxshow.lpi
@@ -193,8 +191,8 @@ jobs:
         run: |
           if [[ "$RUNNER_OS" == "macOS" ]]; then
             cp -a mcxstudio/debug/mcxstudio.app bin
-            #cp -a mcxstudio/mcxshow.app   bin
-            #cp -a mcxstudio/mcxviewer.app bin
+            cp -a mcxstudio/mcxshow.app   bin
+            cp -a mcxstudio/mcxviewer.app bin
           elif [[ "$RUNNER_OS" == "Windows" ]]; then
             rm -rf octave cuda_installer* bin/mcx.lib bin/mcx.exp
             strip -S bin/*

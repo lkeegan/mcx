@@ -85,6 +85,14 @@ This unit is written with CUDA-C and shall be compiled using nvcc in cuda-toolki
 #define FL3(f) make_float3(f,f,f)
 #define CUDA_NAN_F    (__int_as_float(0x7fffffff)) /**< NaN constant in CUDA */
 
+#if !defined(__CUDA_ARCH_LIST__)
+    #if defined(__CUDA_ARCH__)
+        #define __CUDA_ARCH_LIST__ __CUDA_ARCH__
+    #else
+        #define __CUDA_ARCH_LIST__ 350
+    #endif
+#endif
+
 /**
  * @brief Adding two float3 vectors c=a+b
  */
@@ -320,7 +328,7 @@ __device__ inline void updatestokes(Stokes* s, float theta, float phi, float3* u
     temp = (u2->z > -1.f && u2->z < 1.f) ? rsqrtf((1.f - costheta * costheta) * (1.f - u2->z * u2->z)) : 0.f;
 
     cosi = (temp == 0.f) ? 0.f : (((phi > ONE_PI && phi < TWO_PI) ? 1.f : -1.f) * (u2->z * costheta - u->z) * temp);
-    cosi = fmax(-1.f, fmin(cosi, 1.f));
+    cosi = fmaxf(-1.f, fminf(cosi, 1.f));
 
     sini = sqrtf(1.f - cosi * cosi);
     cos22 = 2.f * cosi * cosi - 1.f;
@@ -927,6 +935,11 @@ __device__ inline void rotatevector2d(MCXdir* v, float stheta, float ctheta) {
                             v->nscat
                         );
 
+    float tmp0 = rsqrtf(v->x * v->x + v->y * v->y + v->z * v->z);
+    v->x *= tmp0;
+    v->y *= tmp0;
+    v->z *= tmp0;
+
     GPUDEBUG(("new dir: %10.5e %10.5e %10.5e\n", v->x, v->y, v->z));
 }
 
@@ -955,6 +968,11 @@ __device__ inline void rotatevector(MCXdir* v, float stheta, float ctheta, float
     } else {
         *((float4*)v) = float4(stheta * cphi, stheta * sphi, (v->z > 0.f) ? ctheta : -ctheta, v->nscat);
     }
+
+    float tmp0 = rsqrtf(v->x * v->x + v->y * v->y + v->z * v->z);
+    v->x *= tmp0;
+    v->y *= tmp0;
+    v->z *= tmp0;
 
     GPUDEBUG(("new dir: %10.5e %10.5e %10.5e\n", v->x, v->y, v->z));
 }
@@ -1222,15 +1240,21 @@ __device__ inline int launchnewphoton(MCXpos* p, MCXdir* v, Stokes* s, MCXtime* 
                 }
 
                 case (MCX_SRC_DISK):
+                case (MCX_SRC_RING):
                 case (MCX_SRC_GAUSSIAN): { // uniform disk distribution or collimated Gaussian-beam
                     // Uniform disk point picking
                     // http://mathworld.wolfram.com/DiskPointPicking.html
-                    float sphi, cphi;
-                    float phi = TWO_PI * rand_uniform01(t);
-                    sincosf(phi, &sphi, &cphi);
-                    float r;
+                    float phi, sphi, cphi, r;
 
-                    if (gcfg->srctype == MCX_SRC_DISK) {
+                    if (gcfg->srctype == MCX_SRC_RING && (gcfg->srcparam1.z > 0.f ||  gcfg->srcparam1.w > 0.f)) {
+                        phi = fabsf(gcfg->srcparam1.z - gcfg->srcparam1.w) * rand_uniform01(t) + fminf(gcfg->srcparam1.z, gcfg->srcparam1.w);
+                    } else {
+                        phi = TWO_PI * rand_uniform01(t);
+                    }
+
+                    sincosf(phi, &sphi, &cphi);
+
+                    if (gcfg->srctype == MCX_SRC_DISK || gcfg->srctype == MCX_SRC_RING) {
                         r = sqrtf(rand_uniform01(t) * fabsf(gcfg->srcparam1.x * gcfg->srcparam1.x - gcfg->srcparam1.y * gcfg->srcparam1.y) + gcfg->srcparam1.y * gcfg->srcparam1.y);
                     } else if (fabsf(gcfg->c0.w) < 1e-5f || fabsf(gcfg->srcparam1.y) < 1e-5f) {
                         r = sqrtf(0.5f * rand_next_scatlen(t)) * gcfg->srcparam1.x;
@@ -1825,7 +1849,7 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
 
                             // in early CUDA, when ran=1, CUDA gives 1.000002 for tmp0 which produces nan later
                             // detected by Ocelot,thanks to Greg Diamos,see http://bit.ly/cR2NMP
-                            tmp0 = fmax(-1.f, fmin(1.f, tmp0));
+                            tmp0 = fmaxf(-1.f, fminf(1.f, tmp0));
 
                             theta = acosf(tmp0);
                             stheta = sinf(theta);
@@ -1955,7 +1979,7 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
         GPUDEBUG(("p=[%f %f %f] -> <%f %f %f>*%f -> hit=[%d %d %d] flip=%d\n", p.x, p.y, p.z, v.x, v.y, v.z, len, flipdir[0], flipdir[1], flipdir[2], flipdir[3]));
 
         /** if the consumed unitless scat length is less than what's left in f.pscat, keep moving; otherwise, stop in this voxel */
-        slen = fmin(slen, f.pscat);
+        slen = fminf(slen, f.pscat);
 
         /** final length that the photon moves - either the length to move to the next voxel, or the remaining scattering length */
         len = ((prop.mus == 0.f) ? len : (slen / prop.mus * (v.nscat + 1.f > gcfg->gscatter ? (1.f - prop.g) : 1.f)));
@@ -2055,7 +2079,7 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
                 if (gcfg->outputtype == otEnergy) {
                     weight = w0 - p.w;
                 } else if (gcfg->outputtype == otFluence || gcfg->outputtype == otFlux) {
-                    weight = (prop.mua * len < 0.001f) ? (w0 * len) : __fdividef(w0 - p.w, prop.mua);   /** when mua->0, take limit_{mua->0} w0*(1-exp(-mua*len))/mua yields w0*len */
+                    weight = (prop.mua < 0.001f) ? (w0 * len) : __fdividef(w0 - p.w, prop.mua);   /** when mua->0, take limit_{mua->0} w0*(1-exp(-mua*len))/mua yields w0*len */
                 } else if (gcfg->seed == SEED_FROM_FILE) {
                     if (gcfg->outputtype == otJacobian || gcfg->outputtype == otRF) {
                         weight = replayweight[(idx * gcfg->threadphoton + min(idx, gcfg->oddphotons - 1) + (int)f.ndone)] * f.pathlen;
@@ -3081,11 +3105,11 @@ void mcx_run_simulation(Config* cfg, GPUInfo* gpu) {
         mcx_printheader(cfg);
 
 #ifdef MCX_TARGET_NAME
-        MCX_FPRINTF(cfg->flog, "- variant name: [%s] compiled by nvcc [%d.%d] with CUDA [%d]\n",
-                    "Fermi", __CUDACC_VER_MAJOR__, __CUDACC_VER_MINOR__, CUDART_VERSION);
+        MCX_FPRINTF(cfg->flog, "- code name: [%s] compiled by nvcc [%d.%d] for CUDA-arch [%d] on [%s]\n",
+                    MCX_TARGET_NAME, __CUDACC_VER_MAJOR__, __CUDACC_VER_MINOR__, __CUDA_ARCH_LIST__, __DATE__);
 #else
-        MCX_FPRINTF(cfg->flog, "- code name: [Vanilla MCX] compiled by nvcc [%d.%d] with CUDA [%d]\n",
-                    __CUDACC_VER_MAJOR__, __CUDACC_VER_MINOR__, CUDART_VERSION);
+        MCX_FPRINTF(cfg->flog, "- code name: [Vanilla MCX] compiled by nvcc [%d.%d] for CUDA-arch [%d] on [%s]\n",
+                    __CUDACC_VER_MAJOR__, __CUDACC_VER_MINOR__, __CUDA_ARCH_LIST__, __DATE__);
 #endif
         MCX_FPRINTF(cfg->flog, "- compiled with: RNG [%s] with Seed Length [%d]\n", MCX_RNG_NAME, (int)((sizeof(RandType)*RAND_BUF_LEN) >> 2));
         fflush(cfg->flog);

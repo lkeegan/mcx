@@ -95,6 +95,7 @@
 #define MCX_SRC_HYPERBOLOID_GAUSSIAN 16 /**<  Gaussian-beam with spot focus, scrparam1.{x,y,z} define beam waist, distance from source to focus, rayleigh range */
 #define MCX_SRC_MSOT_ACUITY_ECHO  17  /**<  a source that approximates the MSOT Acuity Echo illumination geometry*/
 #define MCX_SRC_INVISION  18  /**<  a source that approximates the MSOT invision tf-256 illumination geometry*/
+#define MCX_SRC_RING       17 /**<  ring/ring-sector source, scrparam1.{x,y} defines the outer/inner radius, srcparam1.{z,w} defines start/end angle*/
 
 #define SAVE_DETID(a)         ((a)    & 0x1)   /**<  mask to save detector ID*/
 #define SAVE_NSCAT(a)         ((a)>>1 & 0x1)   /**<  output partial scattering counts */

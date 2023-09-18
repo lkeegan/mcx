@@ -40,6 +40,7 @@ CUOMPLINK=
 ARCH = $(shell uname -m)
 PLATFORM = $(shell uname -s)
 CUDA_HOME ?= /usr/local/cuda
+ISCLANG = $(shell $(CC) --version | grep clang)
 
 INCLUDEDIRS+=${INCLUDES} -Izmat -Izmat/easylzma -I$(CUDA_HOME)/include -Iubj
 
@@ -52,7 +53,11 @@ ifeq ($(BACKEND),ocelot)
   CUCCOPT+=-D__STRICT_ANSI__ -g #--maxrregcount 32
 else ifeq ($(BACKEND),cudastatic)
   ifeq ($(findstring Darwin,$(PLATFORM)), Darwin)
-      CUDART=-lcudadevrt -lcudart_static -ldl -static-libgcc -static-libstdc++
+      ifeq ($(ISCLANG),)
+          CUDART=-lcudadevrt -lcudart_static -ldl -static-libgcc -static-libstdc++
+      else
+          CUDART=-lcudadevrt -lcudart_static -ldl /usr/local/lib/libomp.a
+      endif
   else
       CUDART=-lcudadevrt -lcudart_static -ldl -lrt -static-libgcc -static-libstdc++
   endif
@@ -108,7 +113,7 @@ else ifeq ($(findstring Darwin,$(PLATFORM)), Darwin)
   CUDA_STATIC=--cudart static
   OMP=-Xclang -fopenmp
   CPPOPT+=$(OMP)
-  LINKOPT+=-L/usr/local/lib
+  LINKOPT+=/usr/local/lib/libomp.a
   INCLUDEDIRS+=-I/usr/local/include
 else
   CPPOPT+=$(OMP)
@@ -117,11 +122,7 @@ else
      CPPOPT +=-m64
      CUCCOPT +=-m64
      ifeq "$(wildcard $(CUDA_HOME)/lib64)" "$(CUDA_HOME)/lib64"
-        ifeq ($(BACKEND),cuda)
-           LINKOPT=-L$(CUDA_HOME)/lib64 $(CUDART) -lm -lstdc++
-        else ifeq ($(BACKEND),cudastatic)
-           LINKOPT=-L$(CUDA_HOME)/lib64 $(CUDART) -lm -static-libgcc -static-libstdc++
-        endif
+        LINKOPT=-L$(CUDA_HOME)/lib64 $(CUDART)
      endif
   endif
 endif
@@ -192,11 +193,11 @@ log debuglog:   CUCCOPT+=-DUSE_LL5_RAND
 fermi fermimex fermioct:      xor
 fermimex fermioct: OUTPUTFLAG:=-output
 
-log posix xoro fermi:      LINKOPT+=$(CUOMPLINK) $(OMP)
+log posix xoro fermi:      LINKOPT+=$(CUOMPLINK) "$(OMP)"
 
 debugxor debuglog:	CUCCOPT+=-DMCX_DEBUG
 fermi fermimex fermioct:     CUCCOPT+=-DSAVE_DETECTORS -use_fast_math $(CUGENCODE)
-fermi fermimex fermioct: CUCCOPT+=-DMCX_TARGET_NAME='"Fermi MCX"'
+fermi fermimex fermioct: CUCCOPT+=-DMCX_TARGET_NAME='"Heroic Hadron"'
 xorfermi:   xor
 xorofermi:  xoro
 posixfermi: posix
@@ -231,7 +232,7 @@ fermimex fermioct:    CUCCOPT+=--compiler-options "$(DLLFLAG)" -DMCX_CONTAINER -
 fermimex fermioct:    CPPOPT+=$(DLLFLAG) -DMCX_CONTAINER -DMATLAB_MEX_FILE
 fermimex:   LINKOPT+=mcxlab.cpp -outdir $(OUTPUT_DIR) $(INCLUDEDIRS)
 
-fermioct:   AR= CXXFLAGS='-DSAVE_DETECTORS $(NVCCOMP) $(MEXCCOPT) $(USERCCOPT)' LFLAGS='$(NVCCOMP) $(USERLINKOPT)' CC='$(CC)' CXX='$(CXX)' LDFLAGS='$(LFLAGS) $(MEXLINKOPT)' XTRA_CFLAGS='$(NVCCOMP)' XTRA_CXXFLAGS='$(NVCCOMP)'  mkoctfile -v
+fermioct:   AR= CXXFLAGS='-std=c++11 -DSAVE_DETECTORS $(NVCCOMP) $(MEXCCOPT) $(USERCCOPT)' LFLAGS='$(NVCCOMP) $(USERLINKOPT)' CC='$(CC)' CXX='$(CXX)' LDFLAGS='$(LFLAGS) $(MEXLINKOPT)' XTRA_CFLAGS='$(NVCCOMP)' XTRA_CXXFLAGS='$(NVCCOMP)'  mkoctfile -v
 fermioct:   BINARY=mcx.mex
 fermioct:   LINKOPT+=--mex mcxlab.cpp $(INCLUDEDIRS)
 
