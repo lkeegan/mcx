@@ -54,6 +54,10 @@ int main (int argc, char* argv[]) {
       */
     mcx_parsecmd(argc, argv, &mcxconfig);
 
+    for(int i=0; i<100*60*120; ++i){
+        printf("QQQQQQQQQQQQQQQQQQQQQQQQQQQ %d\n", mcxconfig.vol[i]);
+    }
+
     /** The next step, we identify gpu number and query all GPU info */
     if (!(activedev = mcx_list_gpu(&mcxconfig, &gpuinfo))) {
         mcx_error(-1, "No GPU device found\n", __FILE__, __LINE__);

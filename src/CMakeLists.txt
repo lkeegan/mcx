@@ -40,8 +40,8 @@ string(PREPEND OMPFLAG "-Xcompiler ")
 set(
     CUDA_NVCC_FLAGS
     ${CUDA_NVCC_FLAGS};
-    -g -lineinfo -Xcompiler -Wall -Xcompiler -O3 -arch=sm_35
-    -DMCX_TARGET_NAME="Fermi MCX" -DUSE_ATOMIC -use_fast_math
+    -g -lineinfo -Xcompiler -Wall -Xcompiler -O3 -arch=sm_80
+    -DMCX_TARGET_NAME="Fermi MCX" -DUSE_ATOMIC -use_fast_math -ftz=true
     -DSAVE_DETECTORS -Xcompiler -fPIC ${OMPFLAG}
     )
 
