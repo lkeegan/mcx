@@ -49,6 +49,7 @@ class CMakeBuild(build_ext):
             f"-DPYTHON_EXECUTABLE={sys.executable}",
             f"-DCMAKE_BUILD_TYPE={cfg}",  # not used on MSVC, but no harm
             "-DBUILD_PYTHON=true",
+            "-DCUDA_NVCC_FLAGS=-DMCX_DISABLE_CUDA_DEVICE_RESET",
         ]
         build_args = []
         # Adding CMake arguments set as environment variable
@@ -122,7 +123,7 @@ class CMakeBuild(build_ext):
 setup(
     name="pmcx",
     packages=["pmcx"],
-    version="0.2.4",
+    version="0.2.5",
     requires=["numpy"],
     license="GPLv3+",
     author="Matin Raayai Ardakani, Qianqian Fang, Fan-Yu Yen",
