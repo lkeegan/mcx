@@ -332,7 +332,7 @@ void mcx_initcfg(Config* cfg) {
     cfg->nphase = 0;
     cfg->invcdf = NULL;
     memset(cfg->jsonfile, 0, MAX_PATH_LENGTH);
-    memset(cfg->bc, 0, 12);
+    memset(cfg->bc, 0, 13);
     memset(&(cfg->srcparam1), 0, sizeof(float4));
     memset(&(cfg->srcparam2), 0, sizeof(float4));
     memset(cfg->deviceid, 0, MAX_DEVICE);
@@ -2773,7 +2773,7 @@ int mcx_loadjson(cJSON* root, Config* cfg) {
             }
         }
 
-        if (cfg->outputformat == ofJNifti) {
+        if (!flagset['F']) {
             cfg->outputformat = mcx_keylookup((char*)FIND_JSON_KEY("OutputFormat", "Session.OutputFormat", Session, "jnii", valuestring), outputformat);
         }
 
