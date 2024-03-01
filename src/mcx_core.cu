@@ -1982,7 +1982,7 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
         slen = fminf(slen, f.pscat);
 
         /** final length that the photon moves - either the length to move to the next voxel, or the remaining scattering length */
-        len = ((prop.mus == 0.f) ? len : (slen / prop.mus * (v.nscat + 1.f > gcfg->gscatter ? (1.f - prop.g) : 1.f)));
+        len = ((prop.mus == 0.f) ? len : (slen / (prop.mus * (v.nscat + 1.f > gcfg->gscatter ? (1.f - prop.g) : 1.f))));
 
         /** perform ray-interface intersection test to consider intra-voxel curvature (SVMC mode) */
         if (issvmc) {
@@ -2394,7 +2394,9 @@ __global__ void mcx_main_loop(uint media[], OutputType field[], float genergy[],
  */
 void mcx_cu_assess(cudaError_t cuerr, const char* file, const int linenum) {
     if (cuerr != cudaSuccess) {
+#ifndef MCX_DISABLE_CUDA_DEVICE_RESET
         cudaDeviceReset();
+#endif
         mcx_error(-(int)cuerr, (char*)cudaGetErrorString(cuerr), file, linenum);
     }
 }
@@ -2935,7 +2937,10 @@ void mcx_run_simulation(Config* cfg, GPUInfo* gpu) {
             free(field);
             free(Pseed);
 
+#ifndef MCX_DISABLE_CUDA_DEVICE_RESET
             CUDA_ASSERT(cudaDeviceReset());
+#endif
+
         }
         #pragma omp barrier
 
@@ -3884,7 +3889,9 @@ is more than what your have specified (%d), please use the -H option to specify 
     /**
      * The below call in theory is not needed, but it ensures the device is freed for other programs, especially on Windows
      */
+#ifndef MCX_DISABLE_CUDA_DEVICE_RESET
     CUDA_ASSERT(cudaDeviceReset());
+#endif
 
     /**
      * Lastly, free all host buffers, the simulation is complete.

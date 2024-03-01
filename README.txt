@@ -36,7 +36,22 @@ Jacobians for both amplitude and phase components. Please read the details in
 also includes both the web-client and server scripts for MCX Cloud - an in-browser MC
 simulator as we reported in [https://doi.org/10.1117/1.JBO.27.8.083008 Fang2022]. Lastly, MCX
 v2023 provides an official Python mcx module ('''pmcx''') to run stream-lined MCX simulations
-in Python, offering mcxlab-like interface. In summary, v2023 is packed with exciting updates:
+in Python, offering mcxlab-like interface.
+
+Starting in MCX v2023, we have completed the migration from MCX-specific binary output
+formats (.mc2/.mch) to human-readable, extensible and future-proof JSON-based portable
+data formats defined by the [NeuroJSON](https://neurojson.org) project. The NeuroJSON
+project aims at simplify scientific data exchange using portable data formats that are
+readable, searchable, shareable, can be readily validated and served in the web and cloud.
+The NeuroJSON project is also led by MCX's author, Dr. Qianqian Fang, funded by the
+US NIH U24-NS124027 grant.
+
+As a result of this migration, the MCX executable's default output formats are now
+`.jnii` for volumetric output data, and `.jdat` for detected photon/trajectory data.
+Both data formats are JSON compatible. Details on how to read/write these data files
+can be found below.
+
+In summary, v2023 is packed with exciting updates, including
 
 *   Introduced Split voxel MC (SVMC) to accurately model curved boundaries
 *   GPU polarized light modeling (Stokes) with 900x speedup
@@ -46,11 +61,65 @@ in Python, offering mcxlab-like interface. In summary, v2023 is packed with exci
 *   Added Debian/Ubuntu packages for easy installation
 *   Added a unified command line interface, photon, to call mcx/mcxcl/mmc
 *   Fine-tuned Windows installer
--   Extensively developed Github Action for automated building and packaging of mcx
+*   Extensively developed Github Action for automated building and packaging of mcx
+*   Adopted standardized NeuroJSON JNIfTI and JData formats to ease data exchange
+*   New source types: hyperboloid and ring (annulus,annulus sector)
+
 
 A detailed list of updates is summarized below (key features marked with “*”):
 
 Updates since v2022.10:
+
+* 2023-09-22 [9185b5d] fix 64bit macos gui crash, #184
+* 2023-09-21 [393c620] fix valgrind warnings
+* 2023-09-20 [1adb6c6] * disable OpenGL functionalities when building 64bit mac, fix #184
+* 2023-09-19 [9a5dd5b] update octave package files
+* 2023-09-17 [9e9e699] update mcx command cheatsheet
+* 2023-09-17 [ad5a1dd] update all documentation, bump pmcx to v0.1.3
+* 2023-09-17 [5b8a06f] add comments to nightly build script for deployment
+* 2023-09-16 [d2a2ae3] update deploy script after reformat
+* 2023-09-15 [387df65] link libomp.a on mac
+* 2023-09-15 [bf6843f] simplify linkopt
+* 2023-09-15 [4ee145e] update help info
+* 2023-09-13 [ffc8ab0] * support ASCII escape code in Windows terminals
+* 2023-09-12 [24bb9e1] add path to lazbuild
+* 2023-09-12 [6820c04] build mcxstudio on mac
+* 2023-09-12 [9f3c3c2] print verbose info on mac
+* 2023-09-12 [48d4f2f] test macos-12 runner
+* 2023-09-11 [57519b9] force -std=c++11 to build oct on older gcc
+* 2023-09-07 [24c3533] remove redundant functions in mcxlab
+* 2023-09-05 [53e2681] update pmcx after fixing the regression due to #164
+* 2023-09-04 [0b98843] * fix regression caused by #164 for mus=0 region patch in #164 breaks https://github.com/fangq/mmc/blob/master/mmclab/example/demo_dualmesh_output.m
+* 2023-09-04 [287671b] Merge pull request #182 from fangq/ringsrc
+* 2023-09-03 [ad6ff4c] * compact implementation of ring source, close #181
+* 2023-09-01 [b0bad9f] renormalize dir vector after each rotation, suggested by @ShijieYan
+* 2023-09-01 [4fe8e43] highlight link and version with ascii color
+* 2023-08-28 [1a2f291] fix macos nightly build
+* 2023-08-27 [2a5f27c] fix ci build
+* 2023-08-27 [b9f22ad] print code name, print min CUDA arch support
+* 2023-08-25 [f23188b] Update pmcx jupyter notebook
+* 2023-08-25 [0be475b] bump pmcx version to 0.1.1 to fix critical bug #180
+* 2023-08-25 [eaf31de] * [bug] critical! pmcx assumes incorrect default focal length, fix #180
+* 2023-08-25 [ddbbaf3] * [bug]: fix default outputformat when parsing json input, fix #179
+* 2023-08-24 [acfea7d] allow to link with libomp on macos with clang
+* 2023-08-21 [88eba94] fix macos mcx package path
+* 2023-08-21 [1c9efee] adjust cmake build path
+* 2023-08-21 [a2e73b9] add openmp to matlab mex
+* 2023-08-21 [f1d3829] add NO_IMPLICIT_LINK_TO_MATLAB_LIBRARIES in cmake
+* 2023-08-20 [4db668a] fix python windows build error
+* 2023-08-20 [ec119b6] bump pmcx version number, rebuild python module
+* 2023-08-19 [a0a2a9b] *add pmcx utility functions and its test by Ivy Yen
+* 2023-08-15 [73dae89] update pip version
+* 2023-08-15 [d2ff843] use pip3 in check-pypi-upload.sh
+* 2023-08-15 [4f9e278] use UPLOAD_TO_PYPI flag as deploy condition
+* 2023-08-15 [c6d4258] limit travis to only build on master
+* 2023-08-15 [4775c4f] rearrange folder in travis
+* 2023-08-15 [18255c7] install missing twine, move python files to top level
+* 2023-08-15 [9255345] try uploading python macos module from travis
+* 2023-08-12 [af3d386] fix remaining mc2 format flag
+* 2023-08-12 [3187ece] * switch from custom mc2/mch formats to jnii and jdat as default
+* 2023-08-12 [780c7ab] support mcxlab('version'), let pmcx to read 1D detpos,prop,polprop
+* 2023-08-12 [aa9b2f4] update documentation, prepare for v2023 release
 * 2023-08-07 [ac893cd] * mcxplotvol: allow keeping x/y/z slice when switching between 4th dimension
 * 2023-08-07 [9aaba97] fix photon sharing 0 output issue in negative patterns
 * 2023-08-05 [da0beda] padding -0 instead of 0 when saving dref with mua_float medium
@@ -739,7 +808,7 @@ where possible parameters include (the first value in [*|*] is the default)
  -M [0|1]      (--dumpmask)    1 to dump detector volume masks; 0 do not save
  -H [1000000] (--maxdetphoton) max number of detected photons
  -S [1|0]      (--save2pt)     1 to save the flux field; 0 do not save
- -F [mc2|...] (--outputformat) fluence data output format:
+ -F [jnii|...](--outputformat) fluence data output format:
                                mc2 - MCX mc2 format (binary 32bit float)
                                jnii - JNIfTI format (https://neurojson.org)
                                bnii - Binary JNIfTI (https://neurojson.org)
@@ -1147,6 +1216,9 @@ Several data formats can be used to store the 3D/4D/5D volumetric output.
 
 ==== mc2 files ====
 
+Starting in MCX v2023, mc2 files are no longer the default output format for
+MCX binary. Instead, JSON based JNIfTI (.jnii) files are used.
+
 The `.mc2` format is simply a binary dump of the entire volumetric data output,
 consisted of the voxel values (single-precision floating-point) of all voxels and
 time gates. The file contains a continuous buffer of a single-precision (4-byte) 
@@ -1172,10 +1244,13 @@ A .nii output file can be generated by using `-F nii` in the command line.
 The .nii file is widely supported among data processing platforms, including
 MATLAB and Python. For example
 * niftiread.m/niftiwrite in MATLAB Image Processing Toolbox
-* JNIfTI toolbox by Qianqian Fang (https://github.com/fangq/jnifti/tree/master/lib/matlab)
+* JNIfTI toolbox by Qianqian Fang (https://github.com/NeuroJSON/jnifti/tree/master/lib/matlab)
 * PyNIfTI for Python http://niftilib.sourceforge.net/pynifti/intro.html
 
 ==== jnii files ====
+
+Starting in MCX v2023, JSON based JNIfTI (.jnii) files are used as the default
+volumetric data output format.
 
 The JNIfTI format represents the next-generation scientific data storage 
 and exchange standard and is part of the OpenJData initiative (http://openjdata.org)
@@ -1187,7 +1262,7 @@ binary strongly-typed data with internal compression and built in metadata.
 
 The format standard (Draft 1) of the JNIfTI file can be found at
 
-https://github.com/fangq/jnifti
+https://github.com/NeuroJSON/jnifti
 
 A .jnii output file can be generated by using `-F jnii` in the command line.
 
@@ -1213,7 +1288,7 @@ The binary JNIfTI file is also part of the JNIfTI specification and the OpenJDat
 project. In comparison to text-based JSON format, .bnii files can be much smaller
 and faster to parse. The .bnii format is also defined in the BJData specification
 
-https://github.com/fangq/bjdata
+https://github.com/NeuroJSON/bjdata
 
 and is the binary interface to .jnii. A .bnii output file can be generated by 
 using `-F bnii` in the command line.
