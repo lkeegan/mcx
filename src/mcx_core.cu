@@ -1395,38 +1395,33 @@ __device__ inline int launchnewphoton(MCXpos* p, MCXdir* v, Stokes* s, MCXtime* 
                         rotatevector(v, 1.f, 0.f, sphi, cphi);
                     }
 
+                    if (MCX_SRC_SLIT && (gcfg->srcparam2.x > 0.f || gcfg->srcparam2.y > 0.f)) {
+                        float sphi, cphi;
+                        r = TWO_PI * rand_uniform01(t);
+                        sincosf(r, &sphi, &cphi);
+                        r = sqrtf(2.f * rand_next_scatlen(t));
+                        // gaussian broadening factor in direction perpendicular to both slit and v directions
+                        float gauss_perp = gcfg->srcparam2.x * r * cphi;
+                        // gaussian broadening factor in direction of slit
+                        float gauss_parallel = gcfg->srcparam2.y * r * sphi;
+                        float parallel_norm = rnorm3df(gcfg->srcparam1.x, gcfg->srcparam1.y, gcfg->srcparam1.z);
+                        float3 perp = float3(gcfg->srcparam1.y * v->z - gcfg->srcparam1.z * v->y,
+                                             gcfg->srcparam1.z * v->x - gcfg->srcparam1.x * v->z,
+                                             gcfg->srcparam1.x * v->y - gcfg->srcparam1.y * v->x);
+                        float perp_norm = rnorm3df(perp.x, perp.y, perp.z);
+                        v->x += gauss_perp * perp.x * perp_norm + gauss_parallel * gcfg->srcparam1.x * parallel_norm;
+                        v->y += gauss_perp * perp.y * perp_norm + gauss_parallel * gcfg->srcparam1.y * parallel_norm;
+                        v->z += gauss_perp * perp.z * perp_norm + gauss_parallel * gcfg->srcparam1.z * parallel_norm;
+                        r = rnorm3df(v->x, v->y, v->z);
+                        v->x *= r;
+                        v->y *= r;
+                        v->z *= r;
+                    }
+
                     *rv = float3(rv->x + (gcfg->srcparam1.x) * 0.5f,
                                  rv->y + (gcfg->srcparam1.y) * 0.5f,
                                  rv->z + (gcfg->srcparam1.z) * 0.5f);
                     canfocus = (gcfg->srctype == MCX_SRC_SLIT);
-                    break;
-                }
-                case(MCX_SRC_MSOT_ACUITY_ECHO):
-		        {
-                    float r=rand_uniform01(t);
-                    float s=rand_uniform01(t);
-                    float h=rand_uniform01(t);
-                    *((float4*)p)=float4(p->x+(1.f-2.f*r)*gcfg->srcparam1.x/2.f,          //gcfg->srcparam1.x is the x-length of the slit
-                                       p->y+s*gcfg->srcparam1.y,
-                                       p->z+h*gcfg->srcparam1.z,
-                                       p->w);
-                    float angle=8.66f;        //full beam divergence angle measured at Full Width at Half Maximum (FWHM)
-                    float FWHM=2.f*tanf(0.5f*angle*TWO_PI/360.f);       //FWHM of beam divergence
-                    float sigma=FWHM/(2.f*sqrtf(2.f*logf(2.f)));        //standard deviation of gaussian with FWHM
-                    float u1=rand_uniform01(t);
-                    float u2=rand_uniform01(t);
-                    float z0=sigma*sqrtf(-2.f*logf(u1))*cosf(TWO_PI*u2);      //random variable 0 from gaussian with standard deviation sigma
-                    float z1=sigma*sqrtf(-2.f*logf(u1))*sinf(TWO_PI*u2);      //random variable 0 from gaussian with standard deviation sigma
-                    float incident_angle=atanf(v->y/v->z);        //incident angle given by src_dir in .json file
-                    float y_width=cosf(incident_angle)*z0;        //y-distance that needs to be added to the old dir-vector
-                    float z_width=sinf(incident_angle)*z0;        //z-distance that needs to be added to the old dir-vector
-                    *((float3*)v)=float3(v->x+z1, v->y+y_width, v->z+z_width);
-                    float norm=rsqrtf(v->x*v->x+v->y*v->y+v->z*v->z);
-                    *((float3*)v)=float3(v->x*norm, v->y*(norm), v->z*norm);
-
-                    /**rv=float3(rv->x+(gcfg->srcparam1.x)*0.5f,
-                             rv->y+(gcfg->srcparam1.y)*0.5f,
-                             rv->z+(gcfg->srcparam1.z)*0.5f);*/
                     break;
                 }
                 case (MCX_SRC_INVISION):
@@ -1435,66 +1430,12 @@ __device__ inline int launchnewphoton(MCXpos* p, MCXdir* v, Stokes* s, MCXtime* 
                      // @param[in,out] f: the parameter vector of the photon
                      // @param[in,out] rv: the reciprocal direction vector of the photon (rv[i]=1/v[i])
                 {
-                    float sin_ang, cos_ang, ang;
-                    float slit_position_randomisation = rand_uniform01(t);
-                    float opening_angle_randomisation = rand_uniform01(t);
-
+                    float sin_ang, cos_ang;
                     float spacing = (float) gcfg->srcparam1.x; // For the InVision system, the spacing is encoded in srcparam1.x
-                    int illuminator_id = (int) roundf(gcfg->srcparam1.y); // For the InVision system, the illuminator_id is encoded in srcparam1.y
-                    float illumination_angle = -0.41608649f;
+                    float ang = (float) gcfg->srcparam1.y; //1.f-2.f*rand_uniform01(t);
+                    float illumination_angle = (float) gcfg->srcparam1.z; //-0.41608649f;
                     float angle_randomisation = 1.f-2.f*rand_uniform01(t);
                     illumination_angle = illumination_angle + (angle_randomisation * 0.165806f);
-
-                    if (illuminator_id == 0)
-                    {
-                        ang = 0.0f;
-                        illumination_angle = illumination_angle;
-                    }
-                    else if (illuminator_id == 1)
-                    {
-                        ang = 0.0f;
-                        illumination_angle = -illumination_angle;
-                    }
-                    else if (illuminator_id == 2)
-                    {
-                        ang = 1.25664f;
-                        illumination_angle = illumination_angle;
-                    }
-                    else if (illuminator_id == 3)
-                    {
-                        ang = 1.25664f;
-                        illumination_angle = -illumination_angle;
-                    }
-                    else if (illuminator_id == 4)
-                    {
-                        ang = -1.25664f;
-                        illumination_angle = illumination_angle;
-                    }
-                    else if (illuminator_id == 5)
-                    {
-                        ang = -1.25664f;
-                        illumination_angle = -illumination_angle;
-                    }
-                    else if (illuminator_id == 6)
-                    {
-                        ang = 2.51327f;
-                        illumination_angle = illumination_angle;
-                    }
-                    else if (illuminator_id == 7)
-                    {
-                        ang = 2.51327f;
-                        illumination_angle = -illumination_angle;
-                    }
-                    else if (illuminator_id == 8)
-                    {
-                        ang = -2.51327f;
-                        illumination_angle = illumination_angle;
-                    }
-                    else if (illuminator_id == 9)
-                    {
-                        ang = -2.51327f;
-                        illumination_angle = -illumination_angle;
-                    }
 
                     sincosf(ang, &sin_ang, &cos_ang);
                     float length = rsqrtf(sin_ang * sin_ang + sinf(illumination_angle) * sinf(illumination_angle) + cos_ang * cos_ang);
